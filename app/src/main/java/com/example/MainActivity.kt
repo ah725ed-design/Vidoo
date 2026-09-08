@@ -1,0 +1,293 @@
+package com.example
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.example.data.model.VideoItem
+import com.example.ui.components.PermissionRequestCard
+import com.example.ui.screens.FoldersScreen
+import com.example.ui.screens.PlayerScreen
+import com.example.ui.screens.PlaylistsScreen
+import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.VideosScreen
+import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.VidooBlack
+import com.example.ui.theme.VidooDarkCharcoal
+import com.example.ui.theme.VidooOrange
+import com.example.ui.theme.VidooOrangeGlow
+import com.example.ui.theme.VidooTextPrimary
+import com.example.ui.theme.VidooTextSecondary
+import com.example.ui.theme.VidooTextTertiary
+import com.example.ui.viewmodel.VideoPlayerViewModel
+
+enum class NavigationTab(val title: String, val icon: ImageVector) {
+    VIDEOS("Videos", Icons.Default.VideoLibrary),
+    FOLDERS("Folders", Icons.Default.Folder),
+    PLAYLISTS("Playlists", Icons.Default.PlaylistPlay),
+    SETTINGS("Settings", Icons.Default.Settings)
+}
+
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: VideoPlayerViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        setContent {
+            MyApplicationTheme {
+                VidooApp(viewModel = viewModel)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun VidooApp(viewModel: VideoPlayerViewModel) {
+    val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsState()
+
+    var activeTab by remember { mutableIntStateOf(0) }
+    var playingVideo by remember { mutableStateOf<VideoItem?>(null) }
+
+    // Required permission based on Android SDK level
+    val storagePermission = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_VIDEO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+    }
+
+    // Permission launcher
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        viewModel.updatePermissionState(isGranted)
+    }
+
+    // Check permission on startup
+    LaunchedEffect(Unit) {
+        val isGranted = ContextCompat.checkSelfPermission(
+            context,
+            storagePermission
+        ) == PackageManager.PERMISSION_GRANTED
+        viewModel.updatePermissionState(isGranted)
+    }
+
+    // If currently playing a video, show full-screen player
+    if (playingVideo != null) {
+        PlayerScreen(
+            video = playingVideo!!,
+            viewModel = viewModel,
+            onBack = { playingVideo = null }
+        )
+    } else {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(VidooOrange),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Vidoo",
+                                color = VidooTextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    },
+                    actions = {
+                        if (uiState.permissionGranted && activeTab == 0) {
+                            IconButton(
+                                onClick = { viewModel.refreshVideos() },
+                                modifier = Modifier.testTag("refresh_videos_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Refresh Videos",
+                                    tint = VidooOrange
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = VidooBlack,
+                        titleContentColor = VidooTextPrimary
+                    ),
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                )
+            },
+            bottomBar = {
+                NavigationBar(
+                    containerColor = VidooDarkCharcoal,
+                    contentColor = VidooTextSecondary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                ) {
+                    NavigationTab.values().forEachIndexed { index, tab ->
+                        val isSelected = activeTab == index
+                        NavigationBarItem(
+                            selected = isSelected,
+                            onClick = { activeTab = index },
+                            icon = {
+                                Icon(
+                                    imageVector = tab.icon,
+                                    contentDescription = tab.title
+                                )
+                            },
+                            label = {
+                                Text(
+                                    text = tab.title,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.Black,
+                                selectedTextColor = VidooOrange,
+                                indicatorColor = VidooOrange,
+                                unselectedIconColor = VidooTextTertiary,
+                                unselectedTextColor = VidooTextTertiary
+                            ),
+                            modifier = Modifier.testTag("nav_tab_${tab.name.lowercase()}")
+                        )
+                    }
+                }
+            },
+            containerColor = VidooBlack,
+            modifier = Modifier.fillMaxSize()
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                if (!uiState.permissionGranted && (activeTab == 0 || activeTab == 1)) {
+                    PermissionRequestCard(
+                        onRequestPermission = { permissionLauncher.launch(storagePermission) }
+                    )
+                } else {
+                    AnimatedContent(
+                        targetState = activeTab,
+                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        label = "tab_content_transition"
+                    ) { tabIndex ->
+                        when (tabIndex) {
+                            0 -> VideosScreen(
+                                viewModel = viewModel,
+                                onPlayVideo = { playingVideo = it }
+                            )
+                            1 -> FoldersScreen(
+                                viewModel = viewModel,
+                                onFolderSelected = {
+                                    activeTab = 0 // Switch to Videos tab with this folder filtered
+                                }
+                            )
+                            2 -> PlaylistsScreen(
+                                viewModel = viewModel,
+                                onPlayVideo = { playingVideo = it }
+                            )
+                            3 -> SettingsScreen(
+                                viewModel = viewModel
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun Greeting(name: String, modifier: Modifier = Modifier) {
+    Text(text = "Hello $name!", modifier = modifier, color = VidooTextPrimary)
+}
+
+@Preview(showBackground = true)
+@Composable
+fun GreetingPreview() {
+    MyApplicationTheme { Greeting("Android") }
+}

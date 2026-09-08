@@ -1,0 +1,6 @@
+{
+  "name": "Vidoo",
+  "description": "Local video player with dark theme, folders and playlists, gesture controls, subtitle support, and smooth playback.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
