@@ -14,6 +14,9 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -26,8 +29,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -72,9 +77,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -82,6 +91,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
@@ -90,6 +104,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -104,9 +119,15 @@ import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.viewmodel.VideoPlayerViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
+
+enum class SpeedGestureMode {
+    FORWARD_2X,
+    REWIND_2X
+}
 
 enum class AspectRatioMode(val displayName: String, val mode: Int) {
     FIT("Fit", AspectRatioFrameLayout.RESIZE_MODE_FIT),
@@ -123,9 +144,10 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val lifecycleOwner = LocalLifecycleOwner.current
     val settings by viewModel.settings.collectAsState()
 
-    // ExoPlayer instance configured with custom DataSourceFactory for resilient HTTP/HTTPS streaming
+    // ExoPlayer instance configured with software decoder fallback and proper audio attributes
     val exoPlayer = remember {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36")
@@ -136,8 +158,21 @@ fun PlayerScreen(
         val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
-        ExoPlayer.Builder(context)
+        // Enable fallback to software decoders if hardware decoder component interface queries fail
+        val renderersFactory = DefaultRenderersFactory(context).apply {
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+            setEnableDecoderFallback(true)
+        }
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .setUsage(C.USAGE_MEDIA)
+            .build()
+
+        ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
             .build().apply {
                 playWhenReady = true
             }
@@ -169,6 +204,11 @@ fun PlayerScreen(
     var showSpeedDialog by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableFloatStateOf(settings.defaultPlaybackSpeed) }
 
+    // Gesture-based Speed & Rewind Hold state (Long-press left/right)
+    var speedGestureActive by remember { mutableStateOf<SpeedGestureMode?>(null) }
+    var wasPlayingBeforeSpeedGesture by remember { mutableStateOf(false) }
+    val hapticFeedback = LocalHapticFeedback.current
+
     // Subtitles state
     var subtitles by remember { mutableStateOf<List<SubtitleItem>>(emptyList()) }
     var activeSubtitleText by remember { mutableStateOf("") }
@@ -178,29 +218,61 @@ fun PlayerScreen(
     // Resume pill
     var resumeNotification by remember { mutableStateOf<String?>(null) }
 
-    // System Audio Manager
+    // System Audio Manager safely retrieved
     val audioManager = remember {
-        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        try {
+            context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        } catch (_: Exception) {
+            null
+        }
     }
-    val maxVolume = remember {
-        audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+    val maxVolume = remember(audioManager) {
+        try {
+            audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC)?.coerceAtLeast(1) ?: 15
+        } catch (_: Exception) {
+            15
+        }
     }
 
-    // Keep screen on while playing
+    // Pause playback when app goes to background / lifecycle pause
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    exoPlayer.pause()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Keep screen on while playing and properly release player resources
     DisposableEffect(Unit) {
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             // Restore portrait orientation upon exit
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
             exoPlayer.release()
         }
     }
 
-    // Back handler
+    // Back handler: unlock first if screen is locked, otherwise save and exit
     BackHandler {
-        viewModel.saveProgress(video.contentUri, exoPlayer.currentPosition, exoPlayer.duration.coerceAtLeast(0L))
-        onBack()
+        if (isLocked) {
+            isLocked = false
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            showControls = true
+        } else {
+            viewModel.saveProgress(video.contentUri, exoPlayer.currentPosition, exoPlayer.duration.coerceAtLeast(0L))
+            onBack()
+        }
     }
 
     // Initialize Video & Resume position
@@ -284,6 +356,22 @@ fun PlayerScreen(
         }
     }
 
+    // Continuous rapid rewind seeking when long-pressing left side
+    LaunchedEffect(speedGestureActive) {
+        if (speedGestureActive == SpeedGestureMode.REWIND_2X) {
+            while (isActive && speedGestureActive == SpeedGestureMode.REWIND_2X) {
+                val stepMs = 300L
+                val target = (exoPlayer.currentPosition - stepMs).coerceAtLeast(0L)
+                exoPlayer.seekTo(target)
+                currentPosition = target
+                if (target <= 0L) {
+                    break
+                }
+                delay(150L)
+            }
+        }
+    }
+
     // Auto-hide controls timer (3.5 seconds)
     LaunchedEffect(showControls, lastInteractionTime) {
         if (showControls && isPlaying && !isLocked) {
@@ -354,7 +442,13 @@ fun PlayerScreen(
                 }
             },
             update = { playerView ->
+                if (playerView.player != exoPlayer) {
+                    playerView.player = exoPlayer
+                }
                 playerView.resizeMode = currentAspectRatio.mode
+            },
+            onRelease = { playerView ->
+                playerView.player = null
             },
             modifier = Modifier.fillMaxSize()
         )
@@ -368,9 +462,22 @@ fun PlayerScreen(
                         detectTapGestures(onTap = { showControls = true })
                     } else {
                         detectTapGestures(
-                            onTap = {
-                                showControls = !showControls
-                                lastInteractionTime = System.currentTimeMillis()
+                            onPress = { offset ->
+                                try {
+                                    tryAwaitRelease()
+                                } finally {
+                                    if (speedGestureActive != null) {
+                                        val wasActive = speedGestureActive
+                                        val wasPlaying = wasPlayingBeforeSpeedGesture
+                                        speedGestureActive = null
+                                        exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed)
+                                        if (wasActive == SpeedGestureMode.REWIND_2X && wasPlaying) {
+                                            exoPlayer.play()
+                                        } else if (wasActive == SpeedGestureMode.FORWARD_2X && !wasPlaying) {
+                                            exoPlayer.pause()
+                                        }
+                                    }
+                                }
                             },
                             onDoubleTap = { offset ->
                                 val screenWidth = size.width
@@ -391,12 +498,36 @@ fun PlayerScreen(
                                     if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
                                 }
                                 lastInteractionTime = System.currentTimeMillis()
+                            },
+                            onLongPress = { offset ->
+                                val screenWidth = size.width
+                                val isRightSide = offset.x >= screenWidth / 2f
+                                wasPlayingBeforeSpeedGesture = exoPlayer.isPlaying
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (isRightSide) {
+                                    speedGestureActive = SpeedGestureMode.FORWARD_2X
+                                    exoPlayer.playbackParameters = PlaybackParameters(2.0f)
+                                    if (!exoPlayer.isPlaying) {
+                                        exoPlayer.play()
+                                    }
+                                } else {
+                                    speedGestureActive = SpeedGestureMode.REWIND_2X
+                                    if (exoPlayer.isPlaying) {
+                                        exoPlayer.pause()
+                                    }
+                                }
+                                showControls = false
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            onTap = {
+                                showControls = !showControls
+                                lastInteractionTime = System.currentTimeMillis()
                             }
                         )
                     }
                 }
-                .pointerInput(isLocked) {
-                    if (!isLocked) {
+                .pointerInput(isLocked, speedGestureActive != null) {
+                    if (!isLocked && speedGestureActive == null) {
                         detectDragGestures(
                             onDrag = { change, dragAmount ->
                                 change.consume()
@@ -405,10 +536,16 @@ fun PlayerScreen(
 
                                 if (isRightSide) {
                                     // Volume gesture
-                                    val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                    val currentVol = try {
+                                        audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                                    } catch (_: Exception) {
+                                        0
+                                    }
                                     val step = (deltaY / size.height * maxVolume * 2).roundToInt()
                                     val newVol = (currentVol + step).coerceIn(0, maxVolume)
-                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                    try {
+                                        audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                    } catch (_: Exception) {}
                                     val pct = (newVol.toFloat() / maxVolume)
                                     hudIcon = when {
                                         newVol == 0 -> Icons.Default.VolumeMute
@@ -545,6 +682,72 @@ fun PlayerScreen(
             }
         }
 
+        // Gesture-based Speed / Rewind indicator overlay (Minimal floating "2x" with vector icon, no background pill)
+        AnimatedVisibility(
+            visible = speedGestureActive != null,
+            enter = fadeIn() + scaleIn(initialScale = 0.85f),
+            exit = fadeOut() + scaleOut(targetScale = 0.85f),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 28.dp)
+                .testTag("speed_gesture_indicator")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (speedGestureActive == SpeedGestureMode.REWIND_2X) {
+                    Icon(
+                        imageVector = Icons.Default.FastRewind,
+                        contentDescription = "Rewind 2x",
+                        tint = VidooOrange,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "2x",
+                        color = VidooOrange,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp,
+                        style = androidx.compose.ui.text.TextStyle(
+                            shadow = Shadow(
+                                color = Color.Black.copy(alpha = 0.75f),
+                                offset = Offset(0f, 2f),
+                                blurRadius = 6f
+                            )
+                        ),
+                        modifier = Modifier.testTag("speed_gesture_text")
+                    )
+                } else if (speedGestureActive == SpeedGestureMode.FORWARD_2X) {
+                    Text(
+                        text = "2x",
+                        color = VidooOrange,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp,
+                        style = androidx.compose.ui.text.TextStyle(
+                            shadow = Shadow(
+                                color = Color.Black.copy(alpha = 0.75f),
+                                offset = Offset(0f, 2f),
+                                blurRadius = 6f
+                            )
+                        ),
+                        modifier = Modifier.testTag("speed_gesture_text")
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.FastForward,
+                        contentDescription = "Fast Forward 2x",
+                        tint = VidooOrange,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+
         // Resume playback notification pill
         resumeNotification?.let { msg ->
             Surface(
@@ -640,11 +843,13 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
+                    .statusBarsPadding()
                     .padding(20.dp)
             ) {
                 IconButton(
                     onClick = {
                         isLocked = false
+                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                         showControls = true
                         lastInteractionTime = System.currentTimeMillis()
                     },
@@ -652,6 +857,7 @@ fun PlayerScreen(
                         .size(48.dp)
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.7f))
+                        .testTag("player_unlock_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Lock,
@@ -669,17 +875,19 @@ fun PlayerScreen(
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
         ) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.45f))
+                    .statusBarsPadding()
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
                 // Top Bar
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
@@ -707,172 +915,87 @@ fun PlayerScreen(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-
-                    // Subtitle Button
-                    IconButton(
-                        onClick = {
-                            srtPickerLauncher.launch(arrayOf("*/*"))
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        modifier = Modifier.testTag("player_subtitles_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Subtitles,
-                            contentDescription = "Load Subtitle",
-                            tint = if (subtitles.isNotEmpty()) VidooOrange else Color.White
-                        )
-                    }
-
-                    // Playback Speed Button
-                    IconButton(
-                        onClick = {
-                            showSpeedDialog = true
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        modifier = Modifier.testTag("player_speed_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Speed,
-                            contentDescription = "Speed",
-                            tint = if (playbackSpeed != 1.0f) VidooOrange else Color.White
-                        )
-                    }
-
-                    // Aspect Ratio Button
-                    IconButton(
-                        onClick = {
-                            currentAspectRatio = when (currentAspectRatio) {
-                                AspectRatioMode.FIT -> AspectRatioMode.FILL
-                                AspectRatioMode.FILL -> AspectRatioMode.STRETCH
-                                AspectRatioMode.STRETCH -> AspectRatioMode.FIT
-                            }
-                            hudText = "Aspect: ${currentAspectRatio.displayName}"
-                            hudIcon = Icons.Default.AspectRatio
-                            hudPercentage = 1f
-                            showHud = true
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        modifier = Modifier.testTag("player_aspect_ratio_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AspectRatio,
-                            contentDescription = "Aspect Ratio",
-                            tint = Color.White
-                        )
-                    }
-
-                    // Orientation / Rotate Button
-                    IconButton(
-                        onClick = {
-                            activity?.let { act ->
-                                val currentOrientation = act.requestedOrientation
-                                act.requestedOrientation = if (currentOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
-                                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                } else {
-                                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                                }
-                            }
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        modifier = Modifier.testTag("player_rotate_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ScreenRotation,
-                            contentDescription = "Rotate screen",
-                            tint = Color.White
-                        )
-                    }
-
-                    // Screen Lock Button
-                    IconButton(
-                        onClick = {
-                            isLocked = true
-                            showControls = false
-                        },
-                        modifier = Modifier.testTag("player_lock_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LockOpen,
-                            contentDescription = "Lock Screen",
-                            tint = Color.White
-                        )
-                    }
                 }
 
-                // Center Playback Action Buttons
-                Row(
+                // Center Playback Action Buttons (Strictly centered in the middle of the screen)
+                Box(
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(28.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Rewind -10s
-                    IconButton(
-                        onClick = {
-                            val newPos = (exoPlayer.currentPosition - 10000L).coerceAtLeast(0L)
-                            exoPlayer.seekTo(newPos)
-                            currentPosition = newPos
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.6f))
-                            .testTag("player_rewind_button")
+                    Row(
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(28.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Replay10,
-                            contentDescription = "Rewind 10s",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
+                        // Rewind -10s
+                        IconButton(
+                            onClick = {
+                                val newPos = (exoPlayer.currentPosition - 10000L).coerceAtLeast(0L)
+                                exoPlayer.seekTo(newPos)
+                                currentPosition = newPos
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.6f))
+                                .testTag("player_rewind_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Replay10,
+                                contentDescription = "Rewind 10s",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
 
-                    // Large Play / Pause button
-                    IconButton(
-                        onClick = {
-                            if (exoPlayer.isPlaying) {
-                                exoPlayer.pause()
-                            } else {
-                                exoPlayer.play()
-                            }
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        modifier = Modifier
-                            .size(68.dp)
-                            .clip(CircleShape)
-                            .background(VidooOrange)
-                            .testTag("player_play_pause_button")
-                    ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Color.Black,
-                            modifier = Modifier.size(40.dp)
-                        )
-                    }
+                        // Large Play / Pause button
+                        IconButton(
+                            onClick = {
+                                if (exoPlayer.isPlaying) {
+                                    exoPlayer.pause()
+                                } else {
+                                    exoPlayer.play()
+                                }
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            modifier = Modifier
+                                .size(68.dp)
+                                .clip(CircleShape)
+                                .background(VidooOrange)
+                                .testTag("player_play_pause_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                tint = Color.Black,
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
 
-                    // Forward +10s
-                    IconButton(
-                        onClick = {
-                            val newPos = (exoPlayer.currentPosition + 10000L).coerceAtMost(duration)
-                            exoPlayer.seekTo(newPos)
-                            currentPosition = newPos
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.6f))
-                            .testTag("player_forward_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Forward10,
-                            contentDescription = "Forward 10s",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
+                        // Forward +10s
+                        IconButton(
+                            onClick = {
+                                val newPos = (exoPlayer.currentPosition + 10000L).coerceAtMost(duration)
+                                exoPlayer.seekTo(newPos)
+                                currentPosition = newPos
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.6f))
+                                .testTag("player_forward_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Forward10,
+                                contentDescription = "Forward 10s",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
                     }
                 }
 
@@ -880,8 +1003,7 @@ fun PlayerScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = 20.dp, vertical = 18.dp)
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
                     // Scrubber / Seek Bar
                     val effectivePosition = if (isSeeking) seekPosition.toLong() else currentPosition
@@ -958,6 +1080,108 @@ fun PlayerScreen(
                                     )
                                 }
                             }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Secondary Player Controls Row (Subtitles, Speed, Aspect Ratio, Rotation, Lock)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("player_secondary_controls_row"),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Subtitle Button
+                        IconButton(
+                            onClick = {
+                                srtPickerLauncher.launch(arrayOf("*/*"))
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            modifier = Modifier.testTag("player_subtitles_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Subtitles,
+                                contentDescription = "Load Subtitle",
+                                tint = if (subtitles.isNotEmpty()) VidooOrange else Color.White
+                            )
+                        }
+
+                        // Playback Speed Button
+                        IconButton(
+                            onClick = {
+                                showSpeedDialog = true
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            modifier = Modifier.testTag("player_speed_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Speed,
+                                contentDescription = "Speed",
+                                tint = if (playbackSpeed != 1.0f) VidooOrange else Color.White
+                            )
+                        }
+
+                        // Aspect Ratio Button
+                        IconButton(
+                            onClick = {
+                                currentAspectRatio = when (currentAspectRatio) {
+                                    AspectRatioMode.FIT -> AspectRatioMode.FILL
+                                    AspectRatioMode.FILL -> AspectRatioMode.STRETCH
+                                    AspectRatioMode.STRETCH -> AspectRatioMode.FIT
+                                }
+                                hudText = "Aspect: ${currentAspectRatio.displayName}"
+                                hudIcon = Icons.Default.AspectRatio
+                                hudPercentage = 1f
+                                showHud = true
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            modifier = Modifier.testTag("player_aspect_ratio_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AspectRatio,
+                                contentDescription = "Aspect Ratio",
+                                tint = Color.White
+                            )
+                        }
+
+                        // Orientation / Rotate Button
+                        IconButton(
+                            onClick = {
+                                activity?.let { act ->
+                                    val currentOrientation = act.requestedOrientation
+                                    act.requestedOrientation = if (currentOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+                                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    } else {
+                                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                    }
+                                }
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            modifier = Modifier.testTag("player_rotate_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ScreenRotation,
+                                contentDescription = "Rotate screen",
+                                tint = Color.White
+                            )
+                        }
+
+                        // Screen Lock Button
+                        IconButton(
+                            onClick = {
+                                isLocked = true
+                                showControls = false
+                                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                            },
+                            modifier = Modifier.testTag("player_lock_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LockOpen,
+                                contentDescription = "Lock Screen Orientation and Controls",
+                                tint = Color.White
+                            )
                         }
                     }
                 }

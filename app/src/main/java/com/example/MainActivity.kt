@@ -14,7 +14,9 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,7 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,13 +60,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.model.VideoItem
 import com.example.ui.components.PermissionRequestCard
 import com.example.ui.screens.FoldersScreen
@@ -74,6 +81,7 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.VideosScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.VidooBlack
+import com.example.ui.theme.VidooBorder
 import com.example.ui.theme.VidooDarkCharcoal
 import com.example.ui.theme.VidooOrange
 import com.example.ui.theme.VidooOrangeGlow
@@ -97,10 +105,23 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Synchronously verify permission before UI composition to eliminate any screen flash
+        val hasPermission = VideoPlayerViewModel.hasStoragePermission(this)
+        viewModel.updatePermissionState(hasPermission)
+
         setContent {
             MyApplicationTheme {
                 VidooApp(viewModel = viewModel)
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-check if permission was changed in system settings
+        val hasPermission = VideoPlayerViewModel.hasStoragePermission(this)
+        if (hasPermission != viewModel.uiState.value.permissionGranted) {
+            viewModel.updatePermissionState(hasPermission)
         }
     }
 }
@@ -109,19 +130,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VidooApp(viewModel: VideoPlayerViewModel) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val uiState by viewModel.uiState.collectAsState()
 
     var activeTab by remember { mutableIntStateOf(0) }
     var playingVideo by remember { mutableStateOf<VideoItem?>(null) }
 
     // Required permission based on Android SDK level
-    val storagePermission = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_VIDEO
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-    }
+    val storagePermission = remember { VideoPlayerViewModel.getRequiredPermission() }
 
     // Permission launcher
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -130,13 +146,20 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
         viewModel.updatePermissionState(isGranted)
     }
 
-    // Check permission on startup
-    LaunchedEffect(Unit) {
-        val isGranted = ContextCompat.checkSelfPermission(
-            context,
-            storagePermission
-        ) == PackageManager.PERMISSION_GRANTED
-        viewModel.updatePermissionState(isGranted)
+    // Re-check permission when returning to the app from background or system settings
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val isGranted = VideoPlayerViewModel.hasStoragePermission(context)
+                if (isGranted != uiState.permissionGranted) {
+                    viewModel.updatePermissionState(isGranted)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     // If currently playing a video, show full-screen player
@@ -154,21 +177,12 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(VidooOrange),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Image(
+                                painter = painterResource(id = R.drawable.ic_vidoo_symbol),
+                                contentDescription = "Vidoo Logo",
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "Vidoo",
                                 color = VidooTextPrimary,

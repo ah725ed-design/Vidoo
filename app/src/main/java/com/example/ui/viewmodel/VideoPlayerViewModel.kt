@@ -1,6 +1,11 @@
 package com.example.ui.viewmodel
 
+import android.Manifest
 import android.app.Application
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.db.PlaylistEntity
@@ -37,8 +42,22 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
     private val repository = VideoRepository(application)
     private val settingsManager = SettingsManager(application)
 
-    private val _uiState = MutableStateFlow(VideoUiState())
+    // Synchronous initial permission check so UI never flashes a false permission card
+    private val initialPermissionGranted = hasStoragePermission(application)
+
+    private val _uiState = MutableStateFlow(
+        VideoUiState(
+            permissionGranted = initialPermissionGranted,
+            isLoading = initialPermissionGranted
+        )
+    )
     val uiState: StateFlow<VideoUiState> = _uiState.asStateFlow()
+
+    init {
+        if (initialPermissionGranted) {
+            refreshVideos()
+        }
+    }
 
     val playlists: StateFlow<List<PlaylistEntity>> = repository.getAllPlaylists()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -52,11 +71,19 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
     val playlistItems: StateFlow<List<PlaylistItemEntity>> = _playlistItems.asStateFlow()
 
     fun updatePermissionState(granted: Boolean) {
+        val wasGranted = _uiState.value.permissionGranted
         _uiState.value = _uiState.value.copy(permissionGranted = granted)
         if (granted) {
-            refreshVideos()
+            if (!wasGranted || _uiState.value.allVideos.isEmpty()) {
+                refreshVideos()
+            }
         } else {
-            _uiState.value = _uiState.value.copy(isLoading = false)
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                allVideos = emptyList(),
+                filteredVideos = emptyList(),
+                folders = emptyList()
+            )
         }
     }
 
@@ -185,6 +212,23 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
         if (!settings.value.resumePlayback) return
         viewModelScope.launch {
             repository.savePlaybackPosition(videoUri, positionMs, durationMs)
+        }
+    }
+
+    companion object {
+        fun getRequiredPermission(): String {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Manifest.permission.READ_MEDIA_VIDEO
+            } else {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+        }
+
+        fun hasStoragePermission(context: Context): Boolean {
+            return ContextCompat.checkSelfPermission(
+                context,
+                getRequiredPermission()
+            ) == PackageManager.PERMISSION_GRANTED
         }
     }
 }

@@ -10,6 +10,8 @@
     <!-- Network permissions for streaming videos, online media, and sample trailers -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Keep screen awake and prevent CPU sleep during video playback -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"

@@ -15,13 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.ColorLens
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subtitles
@@ -328,107 +325,6 @@ fun SettingsScreen(
                         )
                     )
                 }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Section: Theme & Appearance
-        SettingsSectionTitle(title = "Theme & Visuals", icon = Icons.Default.ColorLens)
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = VidooCardBg)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "AMOLED Pitch Black",
-                            color = VidooTextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = "Save battery on OLED/AMOLED displays",
-                            color = VidooTextTertiary,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    Switch(
-                        checked = settings.amoledBlack,
-                        onCheckedChange = { viewModel.setAmoledBlack(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.Black,
-                            checkedTrackColor = VidooOrange,
-                            uncheckedThumbColor = VidooTextSecondary,
-                            uncheckedTrackColor = VidooSurface
-                        )
-                    )
-                }
-
-                HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .clip(CircleShape)
-                            .background(VidooOrange)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Accent Color: Vidoo Orange (#FF6D00)",
-                        color = VidooTextSecondary,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Section: About
-        SettingsSectionTitle(title = "About", icon = Icons.Default.Info)
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = VidooCardBg)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Vidoo Player",
-                    color = VidooOrange,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Version 1.0.0 • Native Android",
-                    color = VidooTextSecondary,
-                    fontSize = 13.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "100% offline local video player. Built with Jetpack Compose & AndroidX Media3 ExoPlayer. Supports MP4, MKV, AVI, WebM, 3GP and external SRT subtitles.",
-                    color = VidooTextTertiary,
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp
-                )
             }
         }
     }
