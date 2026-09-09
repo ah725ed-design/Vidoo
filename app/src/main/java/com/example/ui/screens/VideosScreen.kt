@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,9 +16,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,6 +44,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +66,8 @@ import com.example.ui.components.SortDialog
 import com.example.ui.components.VideoDetailsDialog
 import com.example.ui.components.VideoGridItem
 import com.example.ui.components.VideoListItem
+import com.example.ui.components.VideoGridSkeleton
+import com.example.ui.components.VideoListSkeleton
 import com.example.ui.theme.VidooBlack
 import com.example.ui.theme.VidooBorder
 import com.example.ui.theme.VidooOrange
@@ -73,10 +82,17 @@ import com.example.ui.viewmodel.VideoPlayerViewModel
 fun VideosScreen(
     viewModel: VideoPlayerViewModel,
     onPlayVideo: (VideoItem) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
+    gridState: LazyGridState = rememberLazyGridState()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
+
+    // Trigger deferred media scanning asynchronously after first frame renders
+    LaunchedEffect(Unit) {
+        viewModel.loadVideosAfterFirstFrame()
+    }
 
     var showSortDialog by remember { mutableStateOf(false) }
     var videoForPlaylist by remember { mutableStateOf<VideoItem?>(null) }
@@ -205,82 +221,95 @@ fun VideosScreen(
             }
         }
 
-        // Content Area
+        // Content Area with smooth transition from skeleton loading to video list
         Box(modifier = Modifier.fillMaxSize()) {
-            if (uiState.isLoading) {
-                CircularProgressIndicator(
-                    color = VidooOrange,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(44.dp)
-                )
-            } else if (uiState.filteredVideos.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(VidooSurfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.VideoLibrary,
-                            contentDescription = null,
-                            tint = VidooTextTertiary,
-                            modifier = Modifier.size(36.dp)
-                        )
+            Crossfade(
+                targetState = uiState.isLoading,
+                animationSpec = tween(durationMillis = 280),
+                label = "videos_content_fade"
+            ) { loading ->
+                if (loading) {
+                    if (uiState.isGridView) {
+                        VideoGridSkeleton()
+                    } else {
+                        VideoListSkeleton()
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = if (uiState.searchQuery.isNotEmpty()) "No matching videos found" else "No videos found",
-                        color = VidooTextPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = if (uiState.searchQuery.isNotEmpty()) "Try searching with a different term" else "Add video files to your device storage to view them here.",
-                        color = VidooTextSecondary,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else {
-                if (uiState.isGridView) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(uiState.filteredVideos, key = { it.id }) { video ->
-                            VideoGridItem(
-                                video = video,
-                                onVideoClick = onPlayVideo,
-                                onAddToPlaylistClick = { videoForPlaylist = it },
-                                onDetailsClick = { videoForDetails = it }
+                } else if (uiState.filteredVideos.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(
+                            modifier = Modifier.padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(VidooSurfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.VideoLibrary,
+                                    contentDescription = null,
+                                    tint = VidooTextTertiary,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = if (uiState.searchQuery.isNotEmpty()) "No matching videos found" else "No videos found",
+                                color = VidooTextPrimary,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = if (uiState.searchQuery.isNotEmpty()) "Try searching with a different term" else "Add video files to your device storage to view them here.",
+                                color = VidooTextSecondary,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
                 } else {
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(uiState.filteredVideos, key = { it.id }) { video ->
-                            VideoListItem(
-                                video = video,
-                                onVideoClick = onPlayVideo,
-                                onAddToPlaylistClick = { videoForPlaylist = it },
-                                onDetailsClick = { videoForDetails = it }
-                            )
+                    if (uiState.isGridView) {
+                        LazyVerticalGrid(
+                            state = gridState,
+                            columns = GridCells.Fixed(2),
+                            contentPadding = PaddingValues(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(uiState.filteredVideos, key = { it.id }) { video ->
+                                VideoGridItem(
+                                    video = video,
+                                    onVideoClick = {
+                                        viewModel.recordVideoPlayed(video.id)
+                                        onPlayVideo(video)
+                                    },
+                                    onAddToPlaylistClick = { videoForPlaylist = it },
+                                    onDetailsClick = { videoForDetails = it }
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(uiState.filteredVideos, key = { it.id }) { video ->
+                                VideoListItem(
+                                    video = video,
+                                    onVideoClick = {
+                                        viewModel.recordVideoPlayed(video.id)
+                                        onPlayVideo(video)
+                                    },
+                                    onAddToPlaylistClick = { videoForPlaylist = it },
+                                    onDetailsClick = { videoForDetails = it }
+                                )
+                            }
                         }
                     }
                 }

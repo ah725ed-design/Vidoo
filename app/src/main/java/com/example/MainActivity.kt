@@ -1,10 +1,14 @@
 package com.example
 
 import android.Manifest
+import android.animation.ObjectAnimator
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -29,6 +33,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
@@ -37,6 +43,7 @@ import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,7 +75,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.animation.doOnEnd
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -102,8 +111,24 @@ class MainActivity : ComponentActivity() {
     private val viewModel: VideoPlayerViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Smooth transition animation when moving from splash -> main content
+        splashScreen.setOnExitAnimationListener { splashScreenViewProvider ->
+            val fadeOut = ObjectAnimator.ofFloat(
+                splashScreenViewProvider.view,
+                View.ALPHA,
+                1f,
+                0f
+            ).apply {
+                interpolator = AccelerateDecelerateInterpolator()
+                duration = 350L
+                doOnEnd { splashScreenViewProvider.remove() }
+            }
+            fadeOut.start()
+        }
 
         // Synchronously verify permission before UI composition to eliminate any screen flash
         val hasPermission = VideoPlayerViewModel.hasStoragePermission(this)
@@ -136,6 +161,15 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
     var activeTab by remember { mutableIntStateOf(0) }
     var playingVideo by remember { mutableStateOf<VideoItem?>(null) }
 
+    // Hoist scroll states so list and grid positions are preserved across playback and tab switching
+    val videosListState = rememberLazyListState()
+    val videosGridState = rememberLazyGridState()
+
+    // Back handler: if user is on secondary tab and not playing video, return to Videos tab
+    BackHandler(enabled = playingVideo == null && activeTab != 0) {
+        activeTab = 0
+    }
+
     // Required permission based on Android SDK level
     val storagePermission = remember { VideoPlayerViewModel.getRequiredPermission() }
 
@@ -162,14 +196,9 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
         }
     }
 
-    // If currently playing a video, show full-screen player
-    if (playingVideo != null) {
-        PlayerScreen(
-            video = playingVideo!!,
-            viewModel = viewModel,
-            onBack = { playingVideo = null }
-        )
-    } else {
+    // Use a Box container so the library Scaffold remains composed beneath the player.
+    // This guarantees that the scroll position and list layout are never lost when opening/closing videos.
+    Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -259,7 +288,18 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                if (!uiState.permissionGranted && (activeTab == 0 || activeTab == 1)) {
+                if (!uiState.isPermissionChecked) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = VidooOrange,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                } else if (!uiState.permissionGranted && (activeTab == 0 || activeTab == 1)) {
                     PermissionRequestCard(
                         onRequestPermission = { permissionLauncher.launch(storagePermission) }
                     )
@@ -272,7 +312,9 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                         when (tabIndex) {
                             0 -> VideosScreen(
                                 viewModel = viewModel,
-                                onPlayVideo = { playingVideo = it }
+                                onPlayVideo = { playingVideo = it },
+                                listState = videosListState,
+                                gridState = videosGridState
                             )
                             1 -> FoldersScreen(
                                 viewModel = viewModel,
@@ -291,6 +333,15 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                     }
                 }
             }
+        }
+
+        // Fullscreen player layer overlaid directly on top of the library without disposing it
+        if (playingVideo != null) {
+            PlayerScreen(
+                video = playingVideo!!,
+                viewModel = viewModel,
+                onBack = { playingVideo = null }
+            )
         }
     }
 }

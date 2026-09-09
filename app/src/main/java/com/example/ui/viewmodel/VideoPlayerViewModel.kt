@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class VideoUiState(
     val isLoading: Boolean = true,
@@ -34,6 +36,7 @@ data class VideoUiState(
     val sortOption: VideoSortOption = VideoSortOption.DATE_DESC,
     val isGridView: Boolean = false,
     val permissionGranted: Boolean = false,
+    val isPermissionChecked: Boolean = true,
     val errorMessage: String? = null
 )
 
@@ -48,13 +51,28 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
     private val _uiState = MutableStateFlow(
         VideoUiState(
             permissionGranted = initialPermissionGranted,
+            isPermissionChecked = true,
             isLoading = initialPermissionGranted
         )
     )
     val uiState: StateFlow<VideoUiState> = _uiState.asStateFlow()
 
-    init {
-        if (initialPermissionGranted) {
+    private var initialScanScheduled = false
+
+    var lastPlayedVideoId: Long? = null
+        private set
+
+    fun recordVideoPlayed(videoId: Long) {
+        lastPlayedVideoId = videoId
+    }
+
+    /**
+     * Defer full media scanning until after the first frame renders,
+     * ensuring immediate first-frame drawing without blocking UI thread.
+     */
+    fun loadVideosAfterFirstFrame() {
+        if (!initialScanScheduled && _uiState.value.permissionGranted) {
+            initialScanScheduled = true
             refreshVideos()
         }
     }
@@ -72,7 +90,10 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun updatePermissionState(granted: Boolean) {
         val wasGranted = _uiState.value.permissionGranted
-        _uiState.value = _uiState.value.copy(permissionGranted = granted)
+        _uiState.value = _uiState.value.copy(
+            permissionGranted = granted,
+            isPermissionChecked = true
+        )
         if (granted) {
             if (!wasGranted || _uiState.value.allVideos.isEmpty()) {
                 refreshVideos()
@@ -91,16 +112,18 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             val videos = repository.queryLocalVideos()
-            val folders = repository.groupVideosByFolders(videos)
-            val sorted = repository.sortVideos(videos, _uiState.value.sortOption)
-            val filtered = filterAndSort(sorted, _uiState.value.searchQuery, _uiState.value.selectedFolder)
+            withContext(Dispatchers.Default) {
+                val folders = repository.groupVideosByFolders(videos)
+                val sorted = repository.sortVideos(videos, _uiState.value.sortOption)
+                val filtered = filterAndSort(sorted, _uiState.value.searchQuery, _uiState.value.selectedFolder)
 
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                allVideos = videos,
-                folders = folders,
-                filteredVideos = filtered
-            )
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    allVideos = videos,
+                    folders = folders,
+                    filteredVideos = filtered
+                )
+            }
         }
     }
 
@@ -225,10 +248,33 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         fun hasStoragePermission(context: Context): Boolean {
-            return ContextCompat.checkSelfPermission(
+            // Check Android 13+ granular media video permission
+            val hasMediaVideo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.READ_MEDIA_VIDEO
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                false
+            }
+
+            // Check standard READ_EXTERNAL_STORAGE permission
+            val hasExternalStorage = ContextCompat.checkSelfPermission(
                 context,
-                getRequiredPermission()
+                Manifest.permission.READ_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED
+
+            // Check Android 14+ partial visual user selected permission
+            val hasPartialVisual = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                false
+            }
+
+            return hasMediaVideo || hasExternalStorage || hasPartialVisual
         }
     }
 }
