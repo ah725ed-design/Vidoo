@@ -284,6 +284,7 @@ fun VideosScreen(
                                 VideoGridItem(
                                     video = video,
                                     onVideoClick = {
+                                        viewModel.setPlaybackQueue(uiState.filteredVideos)
                                         viewModel.recordVideoPlayed(video.id)
                                         onPlayVideo(video)
                                     },
@@ -303,6 +304,7 @@ fun VideosScreen(
                                 VideoListItem(
                                     video = video,
                                     onVideoClick = {
+                                        viewModel.setPlaybackQueue(uiState.filteredVideos)
                                         viewModel.recordVideoPlayed(video.id)
                                         onPlayVideo(video)
                                     },

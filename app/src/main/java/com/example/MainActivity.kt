@@ -336,10 +336,39 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
         }
 
         // Fullscreen player layer overlaid directly on top of the library without disposing it
+        val playbackQueue by viewModel.playbackQueue.collectAsState()
+        val effectiveQueue = remember(playbackQueue, uiState.filteredVideos) {
+            if (playbackQueue.isNotEmpty()) playbackQueue else uiState.filteredVideos
+        }
+
+        val currentVideoIndex = remember(playingVideo, effectiveQueue) {
+            if (playingVideo == null) -1
+            else effectiveQueue.indexOfFirst { it.contentUri == playingVideo?.contentUri }
+        }
+
+        val hasPrevious = currentVideoIndex > 0
+        val hasNext = currentVideoIndex in 0 until (effectiveQueue.size - 1)
+
         if (playingVideo != null) {
             PlayerScreen(
                 video = playingVideo!!,
                 viewModel = viewModel,
+                hasPrevious = hasPrevious,
+                hasNext = hasNext,
+                onPlayPrevious = {
+                    if (currentVideoIndex > 0) {
+                        val prevVideo = effectiveQueue[currentVideoIndex - 1]
+                        viewModel.recordVideoPlayed(prevVideo.id)
+                        playingVideo = prevVideo
+                    }
+                },
+                onPlayNext = {
+                    if (currentVideoIndex in 0 until (effectiveQueue.size - 1)) {
+                        val nextVideo = effectiveQueue[currentVideoIndex + 1]
+                        viewModel.recordVideoPlayed(nextVideo.id)
+                        playingVideo = nextVideo
+                    }
+                },
                 onBack = { playingVideo = null }
             )
         }

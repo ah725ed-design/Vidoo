@@ -19,6 +19,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Restrict packaged locales to English and Arabic to reduce resources size
+        resourceConfigurations += listOf("en", "ar")
+
         ndk {
             abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86"))
         }
@@ -91,6 +94,18 @@ android {
         includeInApk = false
         includeInBundle = true
     }
+
+    packaging {
+        resources {
+            excludes += listOf(
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/LICENSE*",
+                "/META-INF/NOTICE*",
+                "/META-INF/DEPENDENCIES",
+                "META-INF/*.version"
+            )
+        }
+    }
 }
 
 secrets {
@@ -114,7 +129,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.navigation.compose)
+    // navigation.compose is unused; commented to reduce APK size and build overhead
+    // implementation(libs.androidx.navigation.compose)
 
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.runtime)

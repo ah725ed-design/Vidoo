@@ -48,8 +48,11 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.VolumeDown
@@ -73,6 +76,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -120,6 +124,7 @@ import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.viewmodel.VideoPlayerViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
@@ -140,6 +145,10 @@ enum class AspectRatioMode(val displayName: String, val mode: Int) {
 fun PlayerScreen(
     video: VideoItem,
     viewModel: VideoPlayerViewModel,
+    hasPrevious: Boolean = false,
+    hasNext: Boolean = false,
+    onPlayPrevious: () -> Unit = {},
+    onPlayNext: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -178,6 +187,8 @@ fun PlayerScreen(
             }
     }
 
+    val coroutineScope = rememberCoroutineScope()
+    var autoRetryCount by remember { mutableIntStateOf(0) }
     var isPlaying by remember { mutableStateOf(false) }
     var currentPosition by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(video.durationMs) }
@@ -277,20 +288,39 @@ fun PlayerScreen(
 
     // Initialize Video & Resume position
     LaunchedEffect(video.contentUri) {
+        currentPosition = 0L
+        duration = video.durationMs
+        playerErrorMessage = null
+        autoRetryCount = 0
+        subtitles = emptyList()
+        activeSubtitleText = ""
+        subtitleFileName = null
+        showSubtitleInfo = false
+        resumeNotification = null
+
         val mediaItem = MediaItem.fromUri(Uri.parse(video.contentUri))
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
         exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed)
 
         // Check resume position
+        var resumed = false
         if (settings.resumePlayback) {
             val savedPos = viewModel.getSavedPosition(video.contentUri)
-            if (savedPos > 5000L) {
+            // If saved pos is not at the end of the video
+            if (savedPos > 5000L && (video.durationMs <= 0L || savedPos < video.durationMs - 2000L)) {
                 exoPlayer.seekTo(savedPos)
+                currentPosition = savedPos
                 val timeStr = formatTime(savedPos)
                 resumeNotification = "Resumed from $timeStr"
+                resumed = true
             }
         }
+        if (!resumed) {
+            exoPlayer.seekTo(0L)
+            currentPosition = 0L
+        }
+        exoPlayer.play()
     }
 
     // Listener for ExoPlayer state changes
@@ -304,12 +334,40 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) {
                     duration = exoPlayer.duration.coerceAtLeast(0L)
                     playerErrorMessage = null
+                } else if (state == Player.STATE_ENDED) {
+                    isPlaying = false
+                    showControls = true
+                    viewModel.saveProgress(video.contentUri, 0L, duration)
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 val cause = error.cause
+                val isDecoderReclaimed = error.errorCode == PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+
+                if (isDecoderReclaimed && autoRetryCount < 2) {
+                    autoRetryCount++
+                    val savedPos = exoPlayer.currentPosition
+                    coroutineScope.launch {
+                        delay(350L)
+                        try {
+                            exoPlayer.prepare()
+                            if (savedPos > 0L) {
+                                exoPlayer.seekTo(savedPos)
+                            }
+                            exoPlayer.play()
+                            playerErrorMessage = null
+                        } catch (_: Exception) {
+                            playerErrorMessage = "Video decoder was reclaimed by the system. Tap Retry to reload."
+                        }
+                    }
+                    return
+                }
+
                 playerErrorMessage = when {
+                    isDecoderReclaimed ->
+                        "Video decoder was reclaimed by the system. Tap Retry to reload."
                     cause is HttpDataSource.InvalidResponseCodeException ->
                         "Server responded with error (HTTP ${cause.responseCode})"
                     cause is java.net.UnknownHostException ->
@@ -376,6 +434,15 @@ fun PlayerScreen(
     LaunchedEffect(showControls, lastInteractionTime) {
         if (showControls && isPlaying && !isLocked) {
             delay(3500)
+            showControls = false
+        }
+    }
+
+    // Auto-lock screen during playback timer
+    LaunchedEffect(isPlaying, isLocked, lastInteractionTime, settings.autoLock, settings.autoLockTimeoutSec) {
+        if (settings.autoLock && isPlaying && !isLocked) {
+            delay(settings.autoLockTimeoutSec * 1000L)
+            isLocked = true
             showControls = false
         }
     }
@@ -494,8 +561,19 @@ fun PlayerScreen(
                                     currentPosition = newPos
                                     doubleTapRippleText = "+10s"
                                 } else {
-                                    // Center double tap toggles play/pause
-                                    if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                    // Center double tap toggles play/pause or replay if at the end
+                                    val isAtEnd = exoPlayer.playbackState == Player.STATE_ENDED ||
+                                            (duration > 0 && exoPlayer.currentPosition >= duration - 300L)
+                                    if (isAtEnd) {
+                                        exoPlayer.seekTo(0L)
+                                        currentPosition = 0L
+                                        exoPlayer.prepare()
+                                        exoPlayer.play()
+                                    } else if (exoPlayer.isPlaying) {
+                                        exoPlayer.pause()
+                                    } else {
+                                        exoPlayer.play()
+                                    }
                                 }
                                 lastInteractionTime = System.currentTimeMillis()
                             },
@@ -581,8 +659,10 @@ fun PlayerScreen(
         // Subtitle Render Box
         if (activeSubtitleText.isNotEmpty()) {
             val subColor = when (settings.subtitleColor) {
-                "Orange" -> VidooOrange
                 "Yellow" -> Color(0xFFFFEB3B)
+                "Cyan" -> Color(0xFF00E5FF)
+                "Green" -> Color(0xFF69F0AE)
+                "Orange" -> VidooOrange
                 else -> Color.White
             }
             Box(
@@ -827,7 +907,12 @@ fun PlayerScreen(
                         TextButton(
                             onClick = {
                                 playerErrorMessage = null
+                                autoRetryCount = 0
+                                val savedPos = exoPlayer.currentPosition
                                 exoPlayer.prepare()
+                                if (savedPos > 0L) {
+                                    exoPlayer.seekTo(savedPos)
+                                }
                                 exoPlayer.play()
                             }
                         ) {
@@ -925,10 +1010,34 @@ fun PlayerScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(28.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Previous Video Track (|◁)
+                        IconButton(
+                            onClick = {
+                                if (hasPrevious) {
+                                    viewModel.saveProgress(video.contentUri, exoPlayer.currentPosition, exoPlayer.duration.coerceAtLeast(0L))
+                                    onPlayPrevious()
+                                    lastInteractionTime = System.currentTimeMillis()
+                                }
+                            },
+                            enabled = hasPrevious,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(if (hasPrevious) Color.Black.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.2f))
+                                .testTag("player_previous_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipPrevious,
+                                contentDescription = "Previous video",
+                                tint = if (hasPrevious) Color.White else Color.White.copy(alpha = 0.3f),
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
                         // Rewind -10s
                         IconButton(
                             onClick = {
@@ -938,7 +1047,7 @@ fun PlayerScreen(
                                 lastInteractionTime = System.currentTimeMillis()
                             },
                             modifier = Modifier
-                                .size(52.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.6f))
                                 .testTag("player_rewind_button")
@@ -947,14 +1056,21 @@ fun PlayerScreen(
                                 imageVector = Icons.Default.Replay10,
                                 contentDescription = "Rewind 10s",
                                 tint = Color.White,
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                         }
 
-                        // Large Play / Pause button
+                        // Large Play / Pause / Replay button
+                        val isAtEnd = exoPlayer.playbackState == Player.STATE_ENDED ||
+                                (duration > 0 && exoPlayer.currentPosition >= duration - 300L && !isPlaying)
                         IconButton(
                             onClick = {
-                                if (exoPlayer.isPlaying) {
+                                if (isAtEnd) {
+                                    exoPlayer.seekTo(0L)
+                                    currentPosition = 0L
+                                    exoPlayer.prepare()
+                                    exoPlayer.play()
+                                } else if (exoPlayer.isPlaying) {
                                     exoPlayer.pause()
                                 } else {
                                     exoPlayer.play()
@@ -968,8 +1084,16 @@ fun PlayerScreen(
                                 .testTag("player_play_pause_button")
                         ) {
                             Icon(
-                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                imageVector = when {
+                                    isPlaying -> Icons.Default.Pause
+                                    isAtEnd -> Icons.Default.Replay
+                                    else -> Icons.Default.PlayArrow
+                                },
+                                contentDescription = when {
+                                    isPlaying -> "Pause"
+                                    isAtEnd -> "Replay"
+                                    else -> "Play"
+                                },
                                 tint = Color.Black,
                                 modifier = Modifier.size(40.dp)
                             )
@@ -984,7 +1108,7 @@ fun PlayerScreen(
                                 lastInteractionTime = System.currentTimeMillis()
                             },
                             modifier = Modifier
-                                .size(52.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.6f))
                                 .testTag("player_forward_button")
@@ -993,6 +1117,30 @@ fun PlayerScreen(
                                 imageVector = Icons.Default.Forward10,
                                 contentDescription = "Forward 10s",
                                 tint = Color.White,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+
+                        // Next Video Track (▷|)
+                        IconButton(
+                            onClick = {
+                                if (hasNext) {
+                                    viewModel.saveProgress(video.contentUri, exoPlayer.currentPosition, exoPlayer.duration.coerceAtLeast(0L))
+                                    onPlayNext()
+                                    lastInteractionTime = System.currentTimeMillis()
+                                }
+                            },
+                            enabled = hasNext,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(if (hasNext) Color.Black.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.2f))
+                                .testTag("player_next_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "Next video",
+                                tint = if (hasNext) Color.White else Color.White.copy(alpha = 0.3f),
                                 modifier = Modifier.size(28.dp)
                             )
                         }

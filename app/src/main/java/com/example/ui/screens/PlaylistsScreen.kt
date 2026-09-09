@@ -89,34 +89,40 @@ fun PlaylistsScreen(
                 onBack = { viewModel.selectPlaylist(null) },
                 onPlayAll = {
                     if (playlistItems.isNotEmpty()) {
-                        val firstItem = playlistItems.first()
-                        val video = uiState.allVideos.find { it.contentUri == firstItem.videoUri }
-                            ?: VideoItem(
-                                id = 0L,
-                                contentUri = firstItem.videoUri,
-                                title = firstItem.videoTitle,
-                                displayName = firstItem.videoTitle,
-                                durationMs = firstItem.durationMs,
-                                sizeBytes = firstItem.sizeBytes,
-                                dateModified = 0L,
-                                folderName = "Playlist"
-                            )
-                        onPlayVideo(video)
+                        val queue = playlistItems.map { item ->
+                            uiState.allVideos.find { it.contentUri == item.videoUri }
+                                ?: VideoItem(
+                                    id = 0L,
+                                    contentUri = item.videoUri,
+                                    title = item.videoTitle,
+                                    displayName = item.videoTitle,
+                                    durationMs = item.durationMs,
+                                    sizeBytes = item.sizeBytes,
+                                    dateModified = 0L,
+                                    folderName = "Playlist"
+                                )
+                        }
+                        viewModel.setPlaybackQueue(queue)
+                        onPlayVideo(queue.first())
                     }
                 },
                 onPlayItem = { item ->
-                    val video = uiState.allVideos.find { it.contentUri == item.videoUri }
-                        ?: VideoItem(
-                            id = 0L,
-                            contentUri = item.videoUri,
-                            title = item.videoTitle,
-                            displayName = item.videoTitle,
-                            durationMs = item.durationMs,
-                            sizeBytes = item.sizeBytes,
-                            dateModified = 0L,
-                            folderName = "Playlist"
-                        )
-                    onPlayVideo(video)
+                    val queue = playlistItems.map { pi ->
+                        uiState.allVideos.find { it.contentUri == pi.videoUri }
+                            ?: VideoItem(
+                                id = 0L,
+                                contentUri = pi.videoUri,
+                                title = pi.videoTitle,
+                                displayName = pi.videoTitle,
+                                durationMs = pi.durationMs,
+                                sizeBytes = pi.sizeBytes,
+                                dateModified = 0L,
+                                folderName = "Playlist"
+                            )
+                    }
+                    viewModel.setPlaybackQueue(queue)
+                    val targetVideo = queue.find { it.contentUri == item.videoUri } ?: queue.first()
+                    onPlayVideo(targetVideo)
                 },
                 onDeleteItem = { item ->
                     viewModel.removePlaylistItem(item.itemId)

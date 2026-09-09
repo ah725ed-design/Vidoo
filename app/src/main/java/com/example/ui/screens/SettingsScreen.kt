@@ -1,5 +1,20 @@
 package com.example.ui.screens
 
+import android.app.LocaleManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.os.LocaleList
+import android.os.StatFs
+import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,63 +30,95 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
+import com.example.data.repository.VideoSortOption
 import com.example.ui.theme.VidooBlack
 import com.example.ui.theme.VidooBorder
 import com.example.ui.theme.VidooCardBg
 import com.example.ui.theme.VidooOrange
-import com.example.ui.theme.VidooOrangeGlow
 import com.example.ui.theme.VidooSurface
 import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.theme.VidooTextTertiary
 import com.example.ui.viewmodel.VideoPlayerViewModel
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(
     viewModel: VideoPlayerViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
+
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
+
+    // Read device internal storage statistics
+    val storageStats = remember { getStorageStats() }
+
+    // Total detected video stats
+    val totalVideosSize = remember(uiState.allVideos) {
+        uiState.allVideos.sumOf { it.sizeBytes }
+    }
+    val totalVideosCount = uiState.allVideos.size
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(VidooBlack)
             .verticalScroll(scrollState)
-            .padding(bottom = 32.dp)
+            .padding(bottom = 40.dp)
     ) {
-        // Header
+        // Screen Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -80,9 +127,9 @@ fun SettingsScreen(
         ) {
             Icon(
                 imageVector = Icons.Default.Settings,
-                contentDescription = null,
+                contentDescription = "Settings",
                 tint = VidooOrange,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(26.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
@@ -93,8 +140,10 @@ fun SettingsScreen(
             )
         }
 
-        // Section: Playback
-        SettingsSectionTitle(title = "Playback", icon = Icons.Default.PlayCircle)
+        // ==========================================
+        // 1. PLAYBACK
+        // ==========================================
+        SettingsSectionHeader(title = "Playback", icon = Icons.Default.PlayCircle)
 
         Card(
             modifier = Modifier
@@ -104,7 +153,7 @@ fun SettingsScreen(
             colors = CardDefaults.cardColors(containerColor = VidooCardBg)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                // Resume playback toggle
+                // Resume playback (toggle)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -119,28 +168,22 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Remember and prompt to restore last watched position",
+                            text = "Remember and restore last watched position",
                             color = VidooTextTertiary,
                             fontSize = 12.sp
                         )
                     }
-
                     Switch(
                         checked = settings.resumePlayback,
                         onCheckedChange = { viewModel.setResumePlayback(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.Black,
-                            checkedTrackColor = VidooOrange,
-                            uncheckedThumbColor = VidooTextSecondary,
-                            uncheckedTrackColor = VidooSurface
-                        ),
+                        colors = vidooSwitchColors(),
                         modifier = Modifier.testTag("resume_playback_switch")
                     )
                 }
 
                 HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 12.dp))
 
-                // Clear history button
+                // Clear playback history (button)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -151,18 +194,19 @@ fun SettingsScreen(
                             text = "Clear playback history",
                             color = VidooTextPrimary,
                             fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.SemiBold
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "Reset saved progress for all videos",
                             color = VidooTextTertiary,
                             fontSize = 12.sp
                         )
                     }
-
                     OutlinedButton(
-                        onClick = { viewModel.clearAllHistory() },
-                        shape = RoundedCornerShape(8.dp)
+                        onClick = { showClearHistoryDialog = true },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("clear_history_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.CleaningServices,
@@ -171,7 +215,103 @@ fun SettingsScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Reset", color = VidooOrange, fontSize = 12.sp)
+                        Text("Clear", color = VidooOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 12.dp))
+
+                // Default playback speed (selector)
+                Text(
+                    text = "Default playback speed",
+                    color = VidooTextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Speed applied automatically when opening a video",
+                    color = VidooTextTertiary,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                    speeds.forEach { speed ->
+                        val isSelected = settings.defaultPlaybackSpeed == speed
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { viewModel.setDefaultPlaybackSpeed(speed) },
+                            label = { Text("${speed}x", fontSize = 12.sp) },
+                            colors = vidooFilterChipColors(isSelected),
+                            border = vidooFilterChipBorder(isSelected)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 12.dp))
+
+                // Auto-lock screen during playback (toggle + timeout option)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Auto-lock screen during playback",
+                            color = VidooTextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Lock player controls after a period of inactivity",
+                            color = VidooTextTertiary,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Switch(
+                        checked = settings.autoLock,
+                        onCheckedChange = { viewModel.setAutoLock(it) },
+                        colors = vidooSwitchColors(),
+                        modifier = Modifier.testTag("auto_lock_switch")
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = settings.autoLock,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(modifier = Modifier.padding(top = 10.dp)) {
+                        Text(
+                            text = "Auto-lock timeout",
+                            color = VidooOrange,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val timeouts = listOf(15 to "15s", 30 to "30s", 60 to "1 min", 120 to "2 min")
+                            timeouts.forEach { (sec, label) ->
+                                val isSelected = settings.autoLockTimeoutSec == sec
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { viewModel.setAutoLockTimeoutSec(sec) },
+                                    label = { Text(label, fontSize = 12.sp) },
+                                    colors = vidooFilterChipColors(isSelected),
+                                    border = vidooFilterChipBorder(isSelected)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -179,8 +319,126 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Section: Subtitle Appearance
-        SettingsSectionTitle(title = "Subtitle Appearance", icon = Icons.Default.Subtitles)
+        // ==========================================
+        // 2. LIBRARY
+        // ==========================================
+        SettingsSectionHeader(title = "Library", icon = Icons.Default.VideoLibrary)
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = VidooCardBg)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                // Sort order (name / date / size)
+                Text(
+                    text = "Sort order",
+                    color = VidooTextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Default video arrangement in the library",
+                    color = VidooTextTertiary,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val currentSort = uiState.sortOption
+                    val sortOptions = listOf(
+                        VideoSortOption.DATE_DESC to "Date",
+                        VideoSortOption.NAME_ASC to "Name",
+                        VideoSortOption.SIZE_DESC to "Size"
+                    )
+                    sortOptions.forEach { (option, label) ->
+                        val isSelected = currentSort == option
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { viewModel.setSortOption(option) },
+                            label = { Text(label, fontSize = 13.sp) },
+                            colors = vidooFilterChipColors(isSelected),
+                            border = vidooFilterChipBorder(isSelected)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 12.dp))
+
+                // Hide short videos (toggle + duration threshold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Hide short videos",
+                            color = VidooTextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Filter out short media clips from the library",
+                            color = VidooTextTertiary,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Switch(
+                        checked = settings.hideShortVideos,
+                        onCheckedChange = { viewModel.setHideShortVideos(it) },
+                        colors = vidooSwitchColors(),
+                        modifier = Modifier.testTag("hide_short_videos_switch")
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = settings.hideShortVideos,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(modifier = Modifier.padding(top = 10.dp)) {
+                        Text(
+                            text = "Duration threshold",
+                            color = VidooOrange,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val thresholds = listOf(30 to "< 30s", 60 to "< 60s", 120 to "< 2 min")
+                            thresholds.forEach { (sec, label) ->
+                                val isSelected = settings.shortVideoThresholdSec == sec
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { viewModel.setShortVideoThresholdSec(sec) },
+                                    label = { Text(label, fontSize = 12.sp) },
+                                    colors = vidooFilterChipColors(isSelected),
+                                    border = vidooFilterChipBorder(isSelected)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // ==========================================
+        // 3. SUBTITLE APPEARANCE
+        // ==========================================
+        SettingsSectionHeader(title = "Subtitle Appearance", icon = Icons.Default.Subtitles)
 
         Card(
             modifier = Modifier
@@ -192,7 +450,7 @@ fun SettingsScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 // Live subtitle preview
                 Text(
-                    text = "Preview",
+                    text = "Live Preview",
                     color = VidooTextTertiary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
@@ -201,15 +459,17 @@ fun SettingsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(64.dp)
+                        .height(72.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF000000))
+                        .background(Color.Black)
                         .border(1.dp, VidooBorder, RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    val textColor = when (settings.subtitleColor) {
-                        "Orange" -> VidooOrange
+                    val previewColor = when (settings.subtitleColor) {
                         "Yellow" -> Color(0xFFFFEB3B)
+                        "Cyan" -> Color(0xFF00E5FF)
+                        "Green" -> Color(0xFF69F0AE)
+                        "Orange" -> VidooOrange
                         else -> Color.White
                     }
 
@@ -219,119 +479,460 @@ fun SettingsScreen(
                     ) {
                         Text(
                             text = "Sample Subtitle Text (Vidoo)",
-                            color = textColor,
+                            color = previewColor,
                             fontSize = settings.subtitleFontSizeSp.sp,
                             fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Font size options
+                // Font size
                 Text(
-                    text = "Font Size",
+                    text = "Font size",
                     color = VidooTextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val sizes = listOf(14f to "Small", 18f to "Medium", 24f to "Large")
+                    val sizes = listOf(
+                        14f to "Small",
+                        18f to "Medium",
+                        22f to "Large",
+                        26f to "Extra"
+                    )
                     sizes.forEach { (sizeSp, label) ->
                         val isSelected = settings.subtitleFontSizeSp == sizeSp
                         FilterChip(
                             selected = isSelected,
                             onClick = { viewModel.setSubtitleFontSize(sizeSp) },
                             label = { Text(label, fontSize = 13.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = VidooOrange,
-                                selectedLabelColor = Color.Black,
-                                containerColor = VidooSurface,
-                                labelColor = VidooTextPrimary
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = isSelected,
-                                borderColor = if (isSelected) VidooOrange else VidooBorder
-                            )
+                            colors = vidooFilterChipColors(isSelected),
+                            border = vidooFilterChipBorder(isSelected)
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Text Color options
+                // Text color
                 Text(
-                    text = "Text Color",
+                    text = "Text color",
                     color = VidooTextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val colors = listOf("White", "Orange", "Yellow")
-                    colors.forEach { colorName ->
-                        val isSelected = settings.subtitleColor == colorName
+                    val colors = listOf(
+                        "White" to Color.White,
+                        "Yellow" to Color(0xFFFFEB3B),
+                        "Cyan" to Color(0xFF00E5FF),
+                        "Green" to Color(0xFF69F0AE)
+                    )
+                    colors.forEach { (name, col) ->
+                        val isSelected = settings.subtitleColor == name
                         FilterChip(
                             selected = isSelected,
-                            onClick = { viewModel.setSubtitleColor(colorName) },
-                            label = { Text(colorName, fontSize = 13.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = VidooOrange,
-                                selectedLabelColor = Color.Black,
-                                containerColor = VidooSurface,
-                                labelColor = VidooTextPrimary
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = isSelected,
-                                borderColor = if (isSelected) VidooOrange else VidooBorder
-                            )
+                            onClick = { viewModel.setSubtitleColor(name) },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(col)
+                                            .border(0.5.dp, Color.Gray, CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(name, fontSize = 13.sp)
+                                }
+                            },
+                            colors = vidooFilterChipColors(isSelected),
+                            border = vidooFilterChipBorder(isSelected)
                         )
                     }
                 }
 
                 HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 12.dp))
 
-                // Background box toggle
+                // Semi-transparent background toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Semi-transparent background",
-                        color = VidooTextPrimary,
-                        fontSize = 14.sp
-                    )
-
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Semi-transparent background",
+                            color = VidooTextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Add a translucent backdrop for high contrast subtitles",
+                            color = VidooTextTertiary,
+                            fontSize = 12.sp
+                        )
+                    }
                     Switch(
                         checked = settings.subtitleBackground,
                         onCheckedChange = { viewModel.setSubtitleBackground(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.Black,
-                            checkedTrackColor = VidooOrange,
-                            uncheckedThumbColor = VidooTextSecondary,
-                            uncheckedTrackColor = VidooSurface
-                        )
+                        colors = vidooSwitchColors(),
+                        modifier = Modifier.testTag("subtitle_background_switch")
                     )
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // ==========================================
+        // 4. STORAGE
+        // ==========================================
+        SettingsSectionHeader(title = "Storage", icon = Icons.Default.Storage)
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = VidooCardBg)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                // Storage used / available (read-only display)
+                Text(
+                    text = "Device Storage",
+                    color = VidooTextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${storageStats.usedFormatted} used of ${storageStats.totalFormatted} (${storageStats.availableFormatted} available)",
+                    color = VidooTextSecondary,
+                    fontSize = 13.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                LinearProgressIndicator(
+                    progress = { storageStats.usedRatio },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = VidooOrange,
+                    trackColor = VidooSurface
+                )
+
+                HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 14.dp))
+
+                // Total videos size detected (read-only display)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(VidooSurface),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = VidooOrange,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Total videos size detected",
+                            color = VidooTextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val formattedVideoSize = formatByteSize(totalVideosSize)
+                        Text(
+                            text = "$formattedVideoSize across $totalVideosCount video${if (totalVideosCount != 1) "s" else ""}",
+                            color = VidooOrange,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // ==========================================
+        // 5. LANGUAGE
+        // ==========================================
+        SettingsSectionHeader(title = "Language", icon = Icons.Default.Language)
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = VidooCardBg)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "App Language",
+                    color = VidooTextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Select preferred display language for the application",
+                    color = VidooTextTertiary,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val isEnglish = settings.appLanguage == "en"
+                    val isArabic = settings.appLanguage == "ar"
+
+                    FilterChip(
+                        selected = isEnglish,
+                        onClick = {
+                            applyAppLanguage(context, "en", viewModel)
+                        },
+                        label = { Text("English", fontSize = 14.sp) },
+                        colors = vidooFilterChipColors(isEnglish),
+                        border = vidooFilterChipBorder(isEnglish),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    FilterChip(
+                        selected = isArabic,
+                        onClick = {
+                            applyAppLanguage(context, "ar", viewModel)
+                        },
+                        label = { Text("العربية (Arabic)", fontSize = 14.sp) },
+                        colors = vidooFilterChipColors(isArabic),
+                        border = vidooFilterChipBorder(isArabic),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // ==========================================
+        // 6. ABOUT
+        // ==========================================
+        SettingsSectionHeader(title = "About", icon = Icons.Default.Info)
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = VidooCardBg)
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                // App name "Vidoo" + version number
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_vidoo_symbol),
+                        contentDescription = "Vidoo Logo",
+                        modifier = Modifier.size(38.dp)
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Vidoo",
+                            color = VidooTextPrimary,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Version 1.0 (Build 1)",
+                            color = VidooOrange,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Short app description (100% offline local video player)
+                Surface(
+                    color = VidooOrange.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "100% offline local video player",
+                        color = VidooOrange,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+
+                HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 14.dp))
+
+                // Developer: Ahmad Asaad
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(VidooSurface),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "Developer",
+                            tint = VidooOrange,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Developer",
+                            color = VidooTextTertiary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Ahmad Asaad",
+                            color = VidooTextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Contact number: 01271203502
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:01271203502"))
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Contact: 01271203502", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(VidooSurface),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Phone,
+                            contentDescription = "Contact",
+                            tint = VidooOrange,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Contact number",
+                            color = VidooTextTertiary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "01271203502",
+                            color = VidooOrange,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Confirmation dialog for clearing playback history
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            title = {
+                Text(
+                    text = "Clear Playback History",
+                    color = VidooTextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to reset saved playback positions for all videos? This action cannot be undone.",
+                    color = VidooTextSecondary,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearAllHistory()
+                        showClearHistoryDialog = false
+                        Toast.makeText(context, "Playback history cleared", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Clear", color = VidooOrange, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearHistoryDialog = false }) {
+                    Text("Cancel", color = VidooTextTertiary)
+                }
+            },
+            containerColor = VidooCardBg,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 }
 
 @Composable
-private fun SettingsSectionTitle(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+private fun SettingsSectionHeader(title: String, icon: ImageVector) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -349,7 +950,103 @@ private fun SettingsSectionTitle(title: String, icon: androidx.compose.ui.graphi
             text = title,
             color = VidooOrange,
             fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.Bold
         )
     }
+}
+
+@Composable
+private fun vidooSwitchColors() = SwitchDefaults.colors(
+    checkedThumbColor = Color.Black,
+    checkedTrackColor = VidooOrange,
+    uncheckedThumbColor = VidooTextSecondary,
+    uncheckedTrackColor = VidooSurface
+)
+
+@Composable
+private fun vidooFilterChipColors(isSelected: Boolean) = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = VidooOrange,
+    selectedLabelColor = Color.Black,
+    containerColor = VidooSurface,
+    labelColor = VidooTextPrimary
+)
+
+@Composable
+private fun vidooFilterChipBorder(isSelected: Boolean) = FilterChipDefaults.filterChipBorder(
+    enabled = true,
+    selected = isSelected,
+    borderColor = if (isSelected) VidooOrange else VidooBorder
+)
+
+private data class DeviceStorageStats(
+    val totalBytes: Long,
+    val usedBytes: Long,
+    val availableBytes: Long,
+    val usedFormatted: String,
+    val totalFormatted: String,
+    val availableFormatted: String,
+    val usedRatio: Float
+)
+
+private fun getStorageStats(): DeviceStorageStats {
+    return try {
+        val path = Environment.getDataDirectory()
+        val stat = StatFs(path.path)
+        val blockSize = stat.blockSizeLong
+        val totalBlocks = stat.blockCountLong
+        val availableBlocks = stat.availableBlocksLong
+        val totalBytes = (totalBlocks * blockSize).coerceAtLeast(1L)
+        val availableBytes = availableBlocks * blockSize
+        val usedBytes = (totalBytes - availableBytes).coerceAtLeast(0L)
+        val ratio = (usedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+        DeviceStorageStats(
+            totalBytes = totalBytes,
+            usedBytes = usedBytes,
+            availableBytes = availableBytes,
+            usedFormatted = formatByteSize(usedBytes),
+            totalFormatted = formatByteSize(totalBytes),
+            availableFormatted = formatByteSize(availableBytes),
+            usedRatio = ratio
+        )
+    } catch (e: Exception) {
+        DeviceStorageStats(
+            totalBytes = 0L,
+            usedBytes = 0L,
+            availableBytes = 0L,
+            usedFormatted = "0 GB",
+            totalFormatted = "0 GB",
+            availableFormatted = "0 GB",
+            usedRatio = 0f
+        )
+    }
+}
+
+private fun formatByteSize(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    val gb = mb / 1024.0
+    val tb = gb / 1024.0
+    return when {
+        tb >= 1.0 -> String.format(Locale.US, "%.1f TB", tb)
+        gb >= 1.0 -> String.format(Locale.US, "%.1f GB", gb)
+        mb >= 1.0 -> String.format(Locale.US, "%.1f MB", mb)
+        else -> String.format(Locale.US, "%.0f KB", kb)
+    }
+}
+
+private fun applyAppLanguage(context: Context, langCode: String, viewModel: VideoPlayerViewModel) {
+    viewModel.setAppLanguage(langCode)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val localeManager = context.getSystemService(LocaleManager::class.java)
+        localeManager?.applicationLocales = LocaleList.forLanguageTags(langCode)
+    } else {
+        val locale = Locale(langCode)
+        Locale.setDefault(locale)
+        val config = context.resources.configuration
+        config.setLocale(locale)
+        context.resources.updateConfiguration(config, context.resources.displayMetrics)
+    }
+    val msg = if (langCode == "ar") "تم تفعيل اللغة العربية" else "Language set to English"
+    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 }

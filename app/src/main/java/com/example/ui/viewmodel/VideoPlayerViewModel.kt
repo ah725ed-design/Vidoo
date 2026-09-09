@@ -88,6 +88,22 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
     private val _playlistItems = MutableStateFlow<List<PlaylistItemEntity>>(emptyList())
     val playlistItems: StateFlow<List<PlaylistItemEntity>> = _playlistItems.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            settingsManager.settings.collect {
+                applyFilterAndSort()
+            }
+        }
+    }
+
+    // Active playback queue (based on active folder/sort/search or playlist)
+    private val _playbackQueue = MutableStateFlow<List<VideoItem>>(emptyList())
+    val playbackQueue: StateFlow<List<VideoItem>> = _playbackQueue.asStateFlow()
+
+    fun setPlaybackQueue(queue: List<VideoItem>) {
+        _playbackQueue.value = queue
+    }
+
     fun updatePermissionState(granted: Boolean) {
         val wasGranted = _uiState.value.permissionGranted
         _uiState.value = _uiState.value.copy(
@@ -161,6 +177,10 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
         if (folder != null) {
             list = list.filter { it.folderName.equals(folder, ignoreCase = true) }
         }
+        if (settings.value.hideShortVideos) {
+            val minDurationMs = settings.value.shortVideoThresholdSec * 1000L
+            list = list.filter { it.durationMs >= minDurationMs }
+        }
         if (query.isNotBlank()) {
             list = list.filter {
                 it.displayName.contains(query, ignoreCase = true) ||
@@ -219,6 +239,11 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
     fun setSubtitleBackground(enabled: Boolean) = settingsManager.setSubtitleBackground(enabled)
     fun setAmoledBlack(enabled: Boolean) = settingsManager.setAmoledBlack(enabled)
     fun setDefaultPlaybackSpeed(speed: Float) = settingsManager.setDefaultPlaybackSpeed(speed)
+    fun setAutoLock(enabled: Boolean) = settingsManager.setAutoLock(enabled)
+    fun setAutoLockTimeoutSec(seconds: Int) = settingsManager.setAutoLockTimeoutSec(seconds)
+    fun setHideShortVideos(enabled: Boolean) = settingsManager.setHideShortVideos(enabled)
+    fun setShortVideoThresholdSec(seconds: Int) = settingsManager.setShortVideoThresholdSec(seconds)
+    fun setAppLanguage(langCode: String) = settingsManager.setAppLanguage(langCode)
 
     fun clearAllHistory() {
         viewModelScope.launch {

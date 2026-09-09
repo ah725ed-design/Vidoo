@@ -1,11 +1,8 @@
 # Add project specific ProGuard rules here.
 
-# Media3 ExoPlayer ProGuard rules
--keep class androidx.media3.exoplayer.** { *; }
--keep class androidx.media3.common.** { *; }
--keep class androidx.media3.ui.** { *; }
--keep class androidx.media3.datasource.** { *; }
+# Media3 ExoPlayer ProGuard rules (Media3 AARs provide consumer rules; suppress optional missing dependencies)
 -dontwarn androidx.media3.**
+-dontwarn com.google.common.**
 
 # Room local database rules
 -keep class * extends androidx.room.RoomDatabase
