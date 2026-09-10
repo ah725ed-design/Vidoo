@@ -58,6 +58,7 @@ import com.example.ui.theme.VidooSurface
 import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.theme.VidooTextTertiary
+import com.example.util.LocalAppStrings
 import com.example.util.VideoThumbnailHelper
 
 @Composable
@@ -207,13 +208,14 @@ fun VideoListItem(
 
             // More Menu
             Box {
+                val strings = LocalAppStrings.current
                 IconButton(
                     onClick = { showMenu = true },
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Video options",
+                        contentDescription = strings.videoDetails,
                         tint = VidooTextSecondary
                     )
                 }
@@ -224,7 +226,7 @@ fun VideoListItem(
                     modifier = Modifier.background(VidooSurface)
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Play Video", color = VidooTextPrimary) },
+                        text = { Text(strings.playVideo, color = VidooTextPrimary) },
                         leadingIcon = {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, tint = VidooOrange)
                         },
@@ -234,7 +236,7 @@ fun VideoListItem(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Add to Playlist", color = VidooTextPrimary) },
+                        text = { Text(strings.addToPlaylist, color = VidooTextPrimary) },
                         leadingIcon = {
                             Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = VidooOrange)
                         },
@@ -244,7 +246,7 @@ fun VideoListItem(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Video Details", color = VidooTextPrimary) },
+                        text = { Text(strings.videoDetails, color = VidooTextPrimary) },
                         leadingIcon = {
                             Icon(Icons.Outlined.Info, contentDescription = null, tint = VidooTextSecondary)
                         },
@@ -352,13 +354,14 @@ fun VideoGridItem(
                     )
 
                     Box {
+                        val strings = LocalAppStrings.current
                         IconButton(
                             onClick = { showMenu = true },
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
-                                contentDescription = "Options",
+                                contentDescription = strings.videoDetails,
                                 tint = VidooTextSecondary,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -370,7 +373,7 @@ fun VideoGridItem(
                             modifier = Modifier.background(VidooSurface)
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Play", color = VidooTextPrimary) },
+                                text = { Text(strings.playVideo, color = VidooTextPrimary) },
                                 leadingIcon = { Icon(Icons.Default.PlayArrow, null, tint = VidooOrange) },
                                 onClick = {
                                     showMenu = false
@@ -378,7 +381,7 @@ fun VideoGridItem(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Add to Playlist", color = VidooTextPrimary) },
+                                text = { Text(strings.addToPlaylist, color = VidooTextPrimary) },
                                 leadingIcon = { Icon(Icons.Default.PlaylistAdd, null, tint = VidooOrange) },
                                 onClick = {
                                     showMenu = false
@@ -386,7 +389,7 @@ fun VideoGridItem(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Details", color = VidooTextPrimary) },
+                                text = { Text(strings.videoDetails, color = VidooTextPrimary) },
                                 leadingIcon = { Icon(Icons.Outlined.Info, null, tint = VidooTextSecondary) },
                                 onClick = {
                                     showMenu = false

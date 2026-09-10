@@ -31,6 +31,17 @@ import com.example.ui.theme.VidooOrange
 import com.example.ui.theme.VidooSurface
 import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
+import com.example.util.AppStrings
+import com.example.util.LocalAppStrings
+
+fun VideoSortOption.getLocalizedLabel(strings: AppStrings): String = when (this) {
+    VideoSortOption.DATE_DESC -> strings.sortNewest
+    VideoSortOption.DATE_ASC -> strings.sortOldest
+    VideoSortOption.NAME_ASC -> strings.sortNameAsc
+    VideoSortOption.NAME_DESC -> strings.sortNameDesc
+    VideoSortOption.SIZE_DESC -> strings.sortSizeLargest
+    VideoSortOption.SIZE_ASC -> strings.sortSizeSmallest
+}
 
 @Composable
 fun SortDialog(
@@ -38,6 +49,8 @@ fun SortDialog(
     onSortSelected: (VideoSortOption) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = VidooSurface,
@@ -48,7 +61,7 @@ fun SortDialog(
             ) {
                 Icon(Icons.Default.Sort, contentDescription = null, tint = VidooOrange)
                 Text(
-                    text = "Sort Videos",
+                    text = strings.sortDialogTitle,
                     color = VidooTextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
@@ -83,7 +96,7 @@ fun SortDialog(
                             )
                         )
                         Text(
-                            text = option.displayName,
+                            text = option.getLocalizedLabel(strings),
                             color = if (isSelected) VidooOrange else VidooTextPrimary,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 15.sp,
@@ -95,7 +108,7 @@ fun SortDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", color = VidooOrange)
+                Text(strings.close, color = VidooOrange)
             }
         }
     )

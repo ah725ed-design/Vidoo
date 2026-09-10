@@ -19,8 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.PlayArrow
@@ -62,6 +62,7 @@ import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.theme.VidooTextTertiary
 import com.example.ui.viewmodel.VideoPlayerViewModel
+import com.example.util.LocalAppStrings
 
 @Composable
 fun PlaylistsScreen(
@@ -73,6 +74,7 @@ fun PlaylistsScreen(
     val selectedPlaylist by viewModel.selectedPlaylist.collectAsState()
     val playlistItems by viewModel.playlistItems.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    val strings = LocalAppStrings.current
 
     var showCreateDialog by remember { mutableStateOf(false) }
 
@@ -148,7 +150,7 @@ fun PlaylistsScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Playlists",
+                        text = strings.playlistsTitle,
                         color = VidooTextPrimary,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
@@ -182,14 +184,14 @@ fun PlaylistsScreen(
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "No custom playlists yet",
+                                text = strings.noPlaylistsYet,
                                 color = VidooTextPrimary,
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Create playlists to group and play your favorite videos in sequence.",
+                                text = strings.noPlaylistsYetDesc,
                                 color = VidooTextSecondary,
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center
@@ -223,7 +225,7 @@ fun PlaylistsScreen(
                     .padding(20.dp)
                     .testTag("create_playlist_fab")
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Create Playlist")
+                Icon(Icons.Default.Add, contentDescription = strings.createPlaylist)
             }
         }
     }
@@ -246,6 +248,8 @@ fun PlaylistItemCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -284,7 +288,7 @@ fun PlaylistItemCard(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "Custom playlist",
+                    text = strings.customPlaylistSubtitle,
                     color = VidooTextTertiary,
                     fontSize = 12.sp
                 )
@@ -293,7 +297,7 @@ fun PlaylistItemCard(
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.DeleteOutline,
-                    contentDescription = "Delete playlist",
+                    contentDescription = strings.deletePlaylist,
                     tint = VidooTextTertiary
                 )
             }
@@ -311,6 +315,8 @@ fun PlaylistDetailView(
     onDeleteItem: (PlaylistItemEntity) -> Unit,
     onDeletePlaylist: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Detail Header
         Row(
@@ -321,8 +327,8 @@ fun PlaylistDetailView(
         ) {
             IconButton(onClick = onBack) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Back",
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = strings.close,
                     tint = VidooTextPrimary
                 )
             }
@@ -335,7 +341,7 @@ fun PlaylistDetailView(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${items.size} videos",
+                    text = "${items.size} ${if (items.size == 1) strings.videoCountSingle else strings.videoCountPlural}",
                     color = VidooTextTertiary,
                     fontSize = 12.sp
                 )
@@ -343,7 +349,7 @@ fun PlaylistDetailView(
             IconButton(onClick = onDeletePlaylist) {
                 Icon(
                     imageVector = Icons.Default.DeleteOutline,
-                    contentDescription = "Delete playlist",
+                    contentDescription = strings.deletePlaylist,
                     tint = Color(0xFFFF5252)
                 )
             }
@@ -367,7 +373,7 @@ fun PlaylistDetailView(
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Play All (${items.size})", fontWeight = FontWeight.Bold)
+                    Text("${strings.playAll} (${items.size})", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -381,17 +387,10 @@ fun PlaylistDetailView(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "This playlist is empty",
+                        text = strings.emptyPlaylistDesc,
                         color = VidooTextPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Add videos to this playlist from the Videos tab.",
-                        color = VidooTextSecondary,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center
                     )
                 }
             }
@@ -442,7 +441,7 @@ fun PlaylistDetailView(
                             IconButton(onClick = { onDeleteItem(item) }) {
                                 Icon(
                                     imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = "Remove",
+                                    contentDescription = strings.deletePlaylistItem,
                                     tint = VidooTextTertiary,
                                     modifier = Modifier.size(20.dp)
                                 )

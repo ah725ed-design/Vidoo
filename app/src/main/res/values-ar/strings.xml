@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">فيدو</string>
+    <string name="app_name">Vidoo</string>
     <string name="videos">الفيديوهات</string>
     <string name="folders">المجلدات</string>
     <string name="playlists">قوائم التشغيل</string>
@@ -10,5 +10,5 @@
     <string name="search">البحث في الفيديوهات…</string>
     <string name="no_videos_found">لم يتم العثور على فيديوهات</string>
     <string name="grant_permission">منح الإذن</string>
-    <string name="permission_rationale">يحتاج فيدو إلى الوصول إلى الوسائط المحلية لعرض مقاطع الفيديو وتشغيلها.</string>
+    <string name="permission_rationale">يحتاج Vidoo إلى الوصول إلى الوسائط المحلية لعرض مقاطع الفيديو وتشغيلها.</string>
 </resources>

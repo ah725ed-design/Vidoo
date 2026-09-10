@@ -18,6 +18,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -122,6 +123,7 @@ import com.example.ui.theme.VidooSurface
 import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.viewmodel.VideoPlayerViewModel
+import com.example.util.LocalAppStrings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -152,6 +154,7 @@ fun PlayerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val strings = LocalAppStrings.current
     val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
     val settings by viewModel.settings.collectAsState()
@@ -312,7 +315,7 @@ fun PlayerScreen(
                 exoPlayer.seekTo(savedPos)
                 currentPosition = savedPos
                 val timeStr = formatTime(savedPos)
-                resumeNotification = "Resumed from $timeStr"
+                resumeNotification = "${strings.resumedFrom} $timeStr"
                 resumed = true
             }
         }
@@ -359,7 +362,7 @@ fun PlayerScreen(
                             exoPlayer.play()
                             playerErrorMessage = null
                         } catch (_: Exception) {
-                            playerErrorMessage = "Video decoder was reclaimed by the system. Tap Retry to reload."
+                            playerErrorMessage = strings.playerErrorDecoderReclaimed
                         }
                     }
                     return
@@ -367,7 +370,7 @@ fun PlayerScreen(
 
                 playerErrorMessage = when {
                     isDecoderReclaimed ->
-                        "Video decoder was reclaimed by the system. Tap Retry to reload."
+                        strings.playerErrorDecoderReclaimed
                     cause is HttpDataSource.InvalidResponseCodeException ->
                         "Server responded with error (HTTP ${cause.responseCode})"
                     cause is java.net.UnknownHostException ->
@@ -376,7 +379,7 @@ fun PlayerScreen(
                         "Access error: ${cause.message}"
                     error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
                         "Network connection failed"
-                    else -> error.localizedMessage ?: "Unable to play video"
+                    else -> error.localizedMessage ?: strings.playerErrorGeneral
                 }
             }
         }
@@ -631,7 +634,7 @@ fun PlayerScreen(
                                         else -> Icons.Default.VolumeUp
                                     }
                                     hudPercentage = pct
-                                    hudText = "Volume ${(pct * 100).roundToInt()}%"
+                                    hudText = "${strings.volumeLabel} ${(pct * 100).roundToInt()}%"
                                     showHud = true
                                 } else {
                                     // Brightness gesture
@@ -646,7 +649,7 @@ fun PlayerScreen(
                                     }
                                     hudIcon = Icons.Default.BrightnessMedium
                                     hudPercentage = newBrightness
-                                    hudText = "Brightness ${(newBrightness * 100).roundToInt()}%"
+                                    hudText = "${strings.brightnessLabel} ${(newBrightness * 100).roundToInt()}%"
                                     showHud = true
                                 }
                                 lastInteractionTime = System.currentTimeMillis()
@@ -850,7 +853,7 @@ fun PlayerScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Restart",
+                        text = strings.restart,
                         color = VidooOrange,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
@@ -878,20 +881,20 @@ fun PlayerScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Playback Error",
+                        contentDescription = strings.playerErrorGeneral,
                         tint = Color(0xFFEF5350),
                         modifier = Modifier.size(52.dp)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Playback Error",
+                        text = strings.playerErrorGeneral,
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = playerErrorMessage ?: "An error occurred while loading this video.",
+                        text = playerErrorMessage ?: strings.playerErrorGeneral,
                         color = VidooTextSecondary,
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center,
@@ -902,7 +905,7 @@ fun PlayerScreen(
                         TextButton(
                             onClick = { onBack() }
                         ) {
-                            Text("Go Back", color = Color.White)
+                            Text(strings.goBack, color = Color.White)
                         }
                         TextButton(
                             onClick = {
@@ -916,7 +919,7 @@ fun PlayerScreen(
                                 exoPlayer.play()
                             }
                         ) {
-                            Text("Retry", color = VidooOrange, fontWeight = FontWeight.Bold)
+                            Text(strings.retry, color = VidooOrange, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -984,7 +987,7 @@ fun PlayerScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Close player",
+                            contentDescription = strings.close,
                             tint = Color.White
                         )
                     }
@@ -1148,197 +1151,211 @@ fun PlayerScreen(
                 }
 
                 // Bottom Controls Bar (Single cohesive connected block: Time display & Resolution, Seek bar, Icon row)
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                        .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.Black.copy(alpha = 0.75f))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    val effectivePosition = if (isSeeking) seekPosition.toLong() else currentPosition
-                    val safeDuration = duration.coerceAtLeast(1L)
-
-                    // 1. Time display & Resolution / Speed badges
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Text(
-                            text = "${formatTime(effectivePosition)} / ${formatTime(duration)}",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                        val effectivePosition = if (isSeeking) seekPosition.toLong() else currentPosition
+                        val safeDuration = duration.coerceAtLeast(1L)
 
+                        // 1. Time display & Resolution badge (stays as is, tightly aligned within this same block)
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (playbackSpeed != 1.0f) {
-                                Surface(
-                                    color = VidooOrange.copy(alpha = 0.2f),
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        text = "${playbackSpeed}x",
-                                        color = VidooOrange,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-
-                            video.resolutionText()?.let { res ->
-                                Surface(
-                                    color = Color.White.copy(alpha = 0.15f),
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        text = res,
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // 2. Seek/progress bar — right below the time display
-                    Slider(
-                        value = (effectivePosition.toFloat() / safeDuration).coerceIn(0f, 1f),
-                        onValueChange = { fraction ->
-                            isSeeking = true
-                            seekPosition = fraction * safeDuration
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        onValueChangeFinished = {
-                            exoPlayer.seekTo(seekPosition.toLong())
-                            currentPosition = seekPosition.toLong()
-                            isSeeking = false
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        colors = SliderDefaults.colors(
-                            thumbColor = VidooOrange,
-                            activeTrackColor = VidooOrange,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("player_seek_bar")
-                    )
-
-                    // 3. Icon row (Subtitles, Speed, Aspect Ratio, Rotation, Lock) — right below the seek bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("player_secondary_controls_row"),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Subtitle Button
-                        IconButton(
-                            onClick = {
-                                srtPickerLauncher.launch(arrayOf("*/*"))
-                                lastInteractionTime = System.currentTimeMillis()
-                            },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .testTag("player_subtitles_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Subtitles,
-                                contentDescription = "Load Subtitle",
-                                tint = if (subtitles.isNotEmpty()) VidooOrange else Color.White
+                            Text(
+                                text = "${formatTime(effectivePosition)} / ${formatTime(duration)}",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
-                        }
 
-                        // Playback Speed Button
-                        IconButton(
-                            onClick = {
-                                showSpeedDialog = true
-                                lastInteractionTime = System.currentTimeMillis()
-                            },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .testTag("player_speed_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Speed,
-                                contentDescription = "Speed",
-                                tint = if (playbackSpeed != 1.0f) VidooOrange else Color.White
-                            )
-                        }
-
-                        // Aspect Ratio Button
-                        IconButton(
-                            onClick = {
-                                currentAspectRatio = when (currentAspectRatio) {
-                                    AspectRatioMode.FIT -> AspectRatioMode.FILL
-                                    AspectRatioMode.FILL -> AspectRatioMode.STRETCH
-                                    AspectRatioMode.STRETCH -> AspectRatioMode.FIT
-                                }
-                                hudText = "Aspect: ${currentAspectRatio.displayName}"
-                                hudIcon = Icons.Default.AspectRatio
-                                hudPercentage = 1f
-                                showHud = true
-                                lastInteractionTime = System.currentTimeMillis()
-                            },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .testTag("player_aspect_ratio_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AspectRatio,
-                                contentDescription = "Aspect Ratio",
-                                tint = Color.White
-                            )
-                        }
-
-                        // Orientation / Rotate Button
-                        IconButton(
-                            onClick = {
-                                activity?.let { act ->
-                                    val currentOrientation = act.requestedOrientation
-                                    act.requestedOrientation = if (currentOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
-                                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                    } else {
-                                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (playbackSpeed != 1.0f) {
+                                    Surface(
+                                        color = VidooOrange.copy(alpha = 0.25f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "${playbackSpeed}x",
+                                            color = VidooOrange,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
                                     }
                                 }
-                                lastInteractionTime = System.currentTimeMillis()
-                            },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .testTag("player_rotate_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ScreenRotation,
-                                contentDescription = "Rotate screen",
-                                tint = Color.White
-                            )
+
+                                video.resolutionText()?.let { res ->
+                                    Surface(
+                                        color = Color.White.copy(alpha = 0.18f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = res,
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
 
-                        // Screen Lock Button
-                        IconButton(
-                            onClick = {
-                                isLocked = true
-                                showControls = false
-                                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                        // 2. Seek/progress bar — right below the time display
+                        Slider(
+                            value = (effectivePosition.toFloat() / safeDuration).coerceIn(0f, 1f),
+                            onValueChange = { fraction ->
+                                isSeeking = true
+                                seekPosition = fraction * safeDuration
+                                lastInteractionTime = System.currentTimeMillis()
                             },
+                            onValueChangeFinished = {
+                                exoPlayer.seekTo(seekPosition.toLong())
+                                currentPosition = seekPosition.toLong()
+                                isSeeking = false
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            colors = SliderDefaults.colors(
+                                thumbColor = VidooOrange,
+                                activeTrackColor = VidooOrange,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                            ),
                             modifier = Modifier
-                                .size(44.dp)
-                                .testTag("player_lock_button")
+                                .fillMaxWidth()
+                                .height(32.dp)
+                                .testTag("player_seek_bar")
+                        )
+
+                        // 3. Icon row (Subtitles, Speed, Aspect Ratio, Rotate, Lock) — right below the seek bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("player_secondary_controls_row"),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.LockOpen,
-                                contentDescription = "Lock Screen Orientation and Controls",
-                                tint = Color.White
-                            )
+                            // Subtitle Button
+                            IconButton(
+                                onClick = {
+                                    srtPickerLauncher.launch(arrayOf("*/*"))
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("player_subtitles_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Subtitles,
+                                    contentDescription = strings.subtitles,
+                                    tint = if (subtitles.isNotEmpty()) VidooOrange else Color.White
+                                )
+                            }
+
+                            // Playback Speed Button
+                            IconButton(
+                                onClick = {
+                                    showSpeedDialog = true
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("player_speed_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Speed,
+                                    contentDescription = strings.playbackSpeed,
+                                    tint = if (playbackSpeed != 1.0f) VidooOrange else Color.White
+                                )
+                            }
+
+                            // Aspect Ratio Button
+                            IconButton(
+                                onClick = {
+                                    currentAspectRatio = when (currentAspectRatio) {
+                                        AspectRatioMode.FIT -> AspectRatioMode.FILL
+                                        AspectRatioMode.FILL -> AspectRatioMode.STRETCH
+                                        AspectRatioMode.STRETCH -> AspectRatioMode.FIT
+                                    }
+                                    val aspectLabel = when (currentAspectRatio) {
+                                        AspectRatioMode.FIT -> strings.aspectRatioFit
+                                        AspectRatioMode.FILL -> strings.aspectRatioFill
+                                        AspectRatioMode.STRETCH -> strings.aspectRatio16_9
+                                    }
+                                    hudText = "${strings.aspectRatio}: $aspectLabel"
+                                    hudIcon = Icons.Default.AspectRatio
+                                    hudPercentage = 1f
+                                    showHud = true
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("player_aspect_ratio_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AspectRatio,
+                                    contentDescription = strings.aspectRatio,
+                                    tint = Color.White
+                                )
+                            }
+
+                            // Orientation / Rotate Button
+                            IconButton(
+                                onClick = {
+                                    activity?.let { act ->
+                                        val currentOrientation = act.requestedOrientation
+                                        act.requestedOrientation = if (currentOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+                                            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                        } else {
+                                            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                        }
+                                    }
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("player_rotate_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ScreenRotation,
+                                    contentDescription = strings.rotateScreen,
+                                    tint = Color.White
+                                )
+                            }
+
+                            // Screen Lock Button
+                            IconButton(
+                                onClick = {
+                                    isLocked = true
+                                    showControls = false
+                                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("player_lock_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LockOpen,
+                                    contentDescription = strings.lockScreen,
+                                    tint = Color.White
+                                )
+                            }
                         }
                     }
                 }
@@ -1354,7 +1371,7 @@ fun PlayerScreen(
             containerColor = VidooSurface,
             title = {
                 Text(
-                    text = "Playback Speed",
+                    text = strings.playbackSpeed,
                     color = VidooTextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
@@ -1377,7 +1394,7 @@ fun PlayerScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (speed == 1.0f) "Normal (1.0x)" else "${speed}x",
+                                text = if (speed == 1.0f) "${strings.speedNormal} (1.0x)" else "${speed}x",
                                 color = if (isSelected) VidooOrange else VidooTextPrimary,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 fontSize = 15.sp
@@ -1396,7 +1413,7 @@ fun PlayerScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showSpeedDialog = false }) {
-                    Text("Close", color = VidooOrange)
+                    Text(strings.close, color = VidooOrange)
                 }
             }
         )
@@ -1408,18 +1425,18 @@ fun PlayerScreen(
             onDismissRequest = { showSubtitleInfo = false },
             containerColor = VidooSurface,
             title = {
-                Text("Subtitle Loaded", color = VidooTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(strings.subtitleFilePrompt, color = VidooTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             },
             text = {
                 Text(
-                    text = "Loaded ${subtitles.size} subtitle lines from external file. Subtitles are now synchronized with video playback.",
+                    text = "${strings.subtitles}: ${subtitles.size}",
                     color = VidooTextSecondary,
                     fontSize = 14.sp
                 )
             },
             confirmButton = {
                 TextButton(onClick = { showSubtitleInfo = false }) {
-                    Text("OK", color = VidooOrange)
+                    Text(strings.ok, color = VidooOrange)
                 }
             },
             dismissButton = {
@@ -1428,7 +1445,7 @@ fun PlayerScreen(
                     activeSubtitleText = ""
                     showSubtitleInfo = false
                 }) {
-                    Text("Remove Subtitle", color = Color(0xFFFF5252))
+                    Text(strings.removeSubtitle, color = Color(0xFFFF5252))
                 }
             }
         )

@@ -39,12 +39,15 @@ import com.example.ui.theme.VidooOrangeGlow
 import com.example.ui.theme.VidooSurface
 import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
+import com.example.util.LocalAppStrings
 
 @Composable
 fun PermissionRequestCard(
     onRequestPermission: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -82,7 +85,7 @@ fun PermissionRequestCard(
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
-                    text = "Storage Access Required",
+                    text = strings.storageAccessRequired,
                     color = VidooTextPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
@@ -92,7 +95,7 @@ fun PermissionRequestCard(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Vidoo scans your device storage to list, organize, and play your local videos without sending any data online.",
+                    text = strings.permissionRationale,
                     color = VidooTextSecondary,
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
@@ -120,7 +123,7 @@ fun PermissionRequestCard(
                     )
                     Spacer(modifier = Modifier.size(8.dp))
                     Text(
-                        text = "Grant Storage Access",
+                        text = strings.grantStorageAccess,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )

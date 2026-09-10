@@ -77,6 +77,7 @@ import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.theme.VidooTextTertiary
 import com.example.ui.viewmodel.VideoPlayerViewModel
+import com.example.util.LocalAppStrings
 
 @Composable
 fun VideosScreen(
@@ -88,6 +89,7 @@ fun VideosScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
+    val strings = LocalAppStrings.current
 
     // Trigger deferred media scanning asynchronously after first frame renders
     LaunchedEffect(Unit) {
@@ -119,11 +121,11 @@ fun VideosScreen(
                 OutlinedTextField(
                     value = uiState.searchQuery,
                     onValueChange = { viewModel.setSearchQuery(it) },
-                    placeholder = { Text("Search videos…", color = VidooTextTertiary, fontSize = 14.sp) },
+                    placeholder = { Text(strings.searchVideosPlaceholder, color = VidooTextTertiary, fontSize = 14.sp) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
+                            contentDescription = strings.searchVideosPlaceholder,
                             tint = VidooTextSecondary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -133,7 +135,7 @@ fun VideosScreen(
                             IconButton(onClick = { viewModel.setSearchQuery("") }) {
                                 Icon(
                                     imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear search",
+                                    contentDescription = strings.clear,
                                     tint = VidooTextSecondary,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -168,7 +170,7 @@ fun VideosScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Sort,
-                        contentDescription = "Sort videos",
+                        contentDescription = strings.sortVideos,
                         tint = VidooOrange
                     )
                 }
@@ -184,7 +186,7 @@ fun VideosScreen(
                 ) {
                     Icon(
                         imageVector = if (uiState.isGridView) Icons.Default.ViewList else Icons.Default.GridView,
-                        contentDescription = "Toggle View",
+                        contentDescription = strings.toggleView,
                         tint = VidooTextPrimary
                     )
                 }
@@ -197,11 +199,11 @@ fun VideosScreen(
                     InputChip(
                         selected = true,
                         onClick = { viewModel.selectFolder(null) },
-                        label = { Text("Folder: ${uiState.selectedFolder}", fontSize = 12.sp) },
+                        label = { Text("${strings.folderPrefix}: ${uiState.selectedFolder}", fontSize = 12.sp) },
                         trailingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Clear folder filter",
+                                contentDescription = strings.clear,
                                 modifier = Modifier.size(16.dp)
                             )
                         },
@@ -213,7 +215,7 @@ fun VideosScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "(${uiState.filteredVideos.size} videos)",
+                        text = "(${uiState.filteredVideos.size} ${if (uiState.filteredVideos.size == 1) strings.videoCountSingle else strings.videoCountPlural})",
                         color = VidooTextTertiary,
                         fontSize = 12.sp
                     )
@@ -256,14 +258,14 @@ fun VideosScreen(
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = if (uiState.searchQuery.isNotEmpty()) "No matching videos found" else "No videos found",
+                                text = if (uiState.searchQuery.isNotEmpty()) strings.noMatchingVideos else strings.noVideosFound,
                                 color = VidooTextPrimary,
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = if (uiState.searchQuery.isNotEmpty()) "Try searching with a different term" else "Add video files to your device storage to view them here.",
+                                text = if (uiState.searchQuery.isNotEmpty()) strings.noMatchingVideosDesc else strings.noVideosFoundDesc,
                                 color = VidooTextSecondary,
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center

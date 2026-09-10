@@ -28,6 +28,7 @@ class SettingsManager(context: Context) {
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
     private fun loadSettings(): AppSettings {
+        val systemLang = if (java.util.Locale.getDefault().language == "ar") "ar" else "en"
         return AppSettings(
             resumePlayback = prefs.getBoolean("resume_playback", true),
             subtitleFontSizeSp = prefs.getFloat("subtitle_font_size", 18f),
@@ -39,7 +40,7 @@ class SettingsManager(context: Context) {
             autoLockTimeoutSec = prefs.getInt("auto_lock_timeout_sec", 30),
             hideShortVideos = prefs.getBoolean("hide_short_videos", false),
             shortVideoThresholdSec = prefs.getInt("short_video_threshold_sec", 30),
-            appLanguage = prefs.getString("app_language", "en") ?: "en"
+            appLanguage = prefs.getString("app_language", systemLang) ?: systemLang
         )
     }
 

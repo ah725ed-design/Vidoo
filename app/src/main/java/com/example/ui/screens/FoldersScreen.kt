@@ -20,7 +20,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.Card
@@ -49,6 +49,7 @@ import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.theme.VidooTextTertiary
 import com.example.ui.viewmodel.VideoPlayerViewModel
+import com.example.util.LocalAppStrings
 
 @Composable
 fun FoldersScreen(
@@ -57,6 +58,7 @@ fun FoldersScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val strings = LocalAppStrings.current
 
     Column(
         modifier = modifier
@@ -79,13 +81,13 @@ fun FoldersScreen(
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(
-                    text = "Video Folders",
+                    text = strings.videoFoldersTitle,
                     color = VidooTextPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${uiState.folders.size} folders found",
+                    text = "${uiState.folders.size} ${strings.foldersFoundCount}",
                     color = VidooTextTertiary,
                     fontSize = 12.sp
                 )
@@ -106,7 +108,7 @@ fun FoldersScreen(
                         modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("No folders with videos found", color = VidooTextSecondary, fontSize = 16.sp)
+                    Text(strings.noFoldersFound, color = VidooTextSecondary, fontSize = 16.sp)
                 }
             }
         } else {
@@ -137,6 +139,8 @@ fun FolderGridCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -171,7 +175,7 @@ fun FolderGridCard(
                 }
 
                 Icon(
-                    imageVector = Icons.Default.ChevronRight,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = null,
                     tint = VidooTextTertiary,
                     modifier = Modifier.size(20.dp)
@@ -196,7 +200,7 @@ fun FolderGridCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "${folder.videoCount} videos",
+                    text = "${folder.videoCount} ${if (folder.videoCount == 1) strings.videoCountSingle else strings.videoCountPlural}",
                     color = VidooTextSecondary,
                     fontSize = 12.sp
                 )

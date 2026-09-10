@@ -69,10 +69,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.animation.doOnEnd
@@ -98,12 +100,14 @@ import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.theme.VidooTextTertiary
 import com.example.ui.viewmodel.VideoPlayerViewModel
+import com.example.util.AppStrings
+import com.example.util.LocalAppStrings
 
-enum class NavigationTab(val title: String, val icon: ImageVector) {
-    VIDEOS("Videos", Icons.Default.VideoLibrary),
-    FOLDERS("Folders", Icons.Default.Folder),
-    PLAYLISTS("Playlists", Icons.Default.PlaylistPlay),
-    SETTINGS("Settings", Icons.Default.Settings)
+enum class NavigationTab(val icon: ImageVector) {
+    VIDEOS(Icons.Default.VideoLibrary),
+    FOLDERS(Icons.Default.Folder),
+    PLAYLISTS(Icons.Default.PlaylistPlay),
+    SETTINGS(Icons.Default.Settings)
 }
 
 class MainActivity : ComponentActivity() {
@@ -135,8 +139,18 @@ class MainActivity : ComponentActivity() {
         viewModel.updatePermissionState(hasPermission)
 
         setContent {
-            MyApplicationTheme {
-                VidooApp(viewModel = viewModel)
+            val settings by viewModel.settings.collectAsState()
+            val isArabic = settings.appLanguage == "ar"
+            val appStrings = if (isArabic) AppStrings.Arabic else AppStrings.English
+            val layoutDirection = if (isArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
+
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalLayoutDirection provides layoutDirection,
+                LocalAppStrings provides appStrings
+            ) {
+                MyApplicationTheme {
+                    VidooApp(viewModel = viewModel)
+                }
             }
         }
     }
@@ -157,6 +171,7 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val uiState by viewModel.uiState.collectAsState()
+    val strings = LocalAppStrings.current
 
     var activeTab by remember { mutableIntStateOf(0) }
     var playingVideo by remember { mutableStateOf<VideoItem?>(null) }
@@ -213,7 +228,7 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Vidoo",
+                                text = strings.appName,
                                 color = VidooTextPrimary,
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.ExtraBold,
@@ -229,7 +244,7 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Refresh Videos",
+                                    contentDescription = strings.refreshVideos,
                                     tint = VidooOrange
                                 )
                             }
@@ -252,18 +267,24 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                 ) {
                     NavigationTab.values().forEachIndexed { index, tab ->
                         val isSelected = activeTab == index
+                        val localizedTitle = when (tab) {
+                            NavigationTab.VIDEOS -> strings.navVideos
+                            NavigationTab.FOLDERS -> strings.navFolders
+                            NavigationTab.PLAYLISTS -> strings.navPlaylists
+                            NavigationTab.SETTINGS -> strings.navSettings
+                        }
                         NavigationBarItem(
                             selected = isSelected,
                             onClick = { activeTab = index },
                             icon = {
                                 Icon(
                                     imageVector = tab.icon,
-                                    contentDescription = tab.title
+                                    contentDescription = localizedTitle
                                 )
                             },
                             label = {
                                 Text(
-                                    text = tab.title,
+                                    text = localizedTitle,
                                     fontSize = 12.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                 )

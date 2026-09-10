@@ -47,12 +47,14 @@ import com.example.ui.theme.VidooSurface
 import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.theme.VidooTextTertiary
+import com.example.util.LocalAppStrings
 
 @Composable
 fun CreatePlaylistDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     var name by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
 
@@ -66,7 +68,7 @@ fun CreatePlaylistDialog(
             ) {
                 Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = VidooOrange)
                 Text(
-                    text = "New Playlist",
+                    text = strings.newPlaylistTitle,
                     color = VidooTextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
@@ -76,7 +78,7 @@ fun CreatePlaylistDialog(
         text = {
             Column {
                 Text(
-                    text = "Enter a name for your custom playlist:",
+                    text = strings.playlistNamePrompt,
                     color = VidooTextSecondary,
                     fontSize = 14.sp
                 )
@@ -87,7 +89,7 @@ fun CreatePlaylistDialog(
                         name = it
                         if (it.isNotBlank()) isError = false
                     },
-                    placeholder = { Text("e.g., Favorites, Watch Later", color = VidooTextTertiary) },
+                    placeholder = { Text(strings.playlistNameHint, color = VidooTextTertiary) },
                     singleLine = true,
                     isError = isError,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -103,7 +105,7 @@ fun CreatePlaylistDialog(
                 )
                 if (isError) {
                     Text(
-                        text = "Playlist name cannot be empty",
+                        text = strings.playlistNameEmptyError,
                         color = VidooOrange,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(top = 4.dp)
@@ -126,12 +128,12 @@ fun CreatePlaylistDialog(
                 ),
                 modifier = Modifier.testTag("create_playlist_confirm_button")
             ) {
-                Text("Create", fontWeight = FontWeight.Bold)
+                Text(strings.create, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = VidooTextSecondary)
+                Text(strings.cancel, color = VidooTextSecondary)
             }
         }
     )
@@ -145,6 +147,8 @@ fun AddToPlaylistDialog(
     onCreateNewClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = VidooSurface,
@@ -156,7 +160,7 @@ fun AddToPlaylistDialog(
                 ) {
                     Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = VidooOrange)
                     Text(
-                        text = "Add to Playlist",
+                        text = strings.addToPlaylist,
                         color = VidooTextPrimary,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
@@ -189,7 +193,7 @@ fun AddToPlaylistDialog(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Create new playlist",
+                        text = strings.createPlaylist,
                         color = VidooOrange,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
@@ -203,7 +207,7 @@ fun AddToPlaylistDialog(
 
                 if (playlists.isEmpty()) {
                     Text(
-                        text = "No custom playlists yet. Create one above!",
+                        text = strings.noPlaylistsYetDesc,
                         color = VidooTextTertiary,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = 12.dp)
@@ -241,7 +245,7 @@ fun AddToPlaylistDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = VidooTextSecondary)
+                Text(strings.cancel, color = VidooTextSecondary)
             }
         }
     )
@@ -252,6 +256,8 @@ fun VideoDetailsDialog(
     video: VideoItem,
     onDismiss: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = VidooSurface,
@@ -262,7 +268,7 @@ fun VideoDetailsDialog(
             ) {
                 Icon(Icons.Default.Info, contentDescription = null, tint = VidooOrange)
                 Text(
-                    text = "Video Details",
+                    text = strings.detailsTitle,
                     color = VidooTextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
@@ -274,19 +280,19 @@ fun VideoDetailsDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                DetailItem(label = "File Name", value = video.displayName)
-                DetailItem(label = "Folder", value = video.folderName)
-                DetailItem(label = "Duration", value = video.formattedDuration())
-                DetailItem(label = "File Size", value = video.formattedSize())
+                DetailItem(label = strings.fileNameLabel, value = video.displayName)
+                DetailItem(label = strings.folderLabel, value = video.folderName)
+                DetailItem(label = strings.durationLabel, value = video.formattedDuration())
+                DetailItem(label = strings.fileSizeLabel, value = video.formattedSize())
                 video.resolutionText()?.let {
-                    DetailItem(label = "Resolution", value = it)
+                    DetailItem(label = strings.resolutionLabel, value = it)
                 }
-                DetailItem(label = "MIME Type", value = video.mimeType)
+                DetailItem(label = strings.mimeTypeLabel, value = video.mimeType)
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", color = VidooOrange)
+                Text(strings.close, color = VidooOrange)
             }
         }
     )
