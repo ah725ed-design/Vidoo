@@ -1147,44 +1147,21 @@ fun PlayerScreen(
                     }
                 }
 
-                // Bottom Controls Bar (Seek slider & Timestamps)
+                // Bottom Controls Bar (Single cohesive connected block: Time display & Resolution, Seek bar, Icon row)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    // Scrubber / Seek Bar
                     val effectivePosition = if (isSeeking) seekPosition.toLong() else currentPosition
                     val safeDuration = duration.coerceAtLeast(1L)
 
-                    Slider(
-                        value = (effectivePosition.toFloat() / safeDuration).coerceIn(0f, 1f),
-                        onValueChange = { fraction ->
-                            isSeeking = true
-                            seekPosition = fraction * safeDuration
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        onValueChangeFinished = {
-                            exoPlayer.seekTo(seekPosition.toLong())
-                            currentPosition = seekPosition.toLong()
-                            isSeeking = false
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        colors = SliderDefaults.colors(
-                            thumbColor = VidooOrange,
-                            activeTrackColor = VidooOrange,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("player_seek_bar")
-                    )
-
-                    // Timestamps & Quality
+                    // 1. Time display & Resolution / Speed badges
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 4.dp),
+                            .padding(horizontal = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1231,9 +1208,31 @@ fun PlayerScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    // 2. Seek/progress bar — right below the time display
+                    Slider(
+                        value = (effectivePosition.toFloat() / safeDuration).coerceIn(0f, 1f),
+                        onValueChange = { fraction ->
+                            isSeeking = true
+                            seekPosition = fraction * safeDuration
+                            lastInteractionTime = System.currentTimeMillis()
+                        },
+                        onValueChangeFinished = {
+                            exoPlayer.seekTo(seekPosition.toLong())
+                            currentPosition = seekPosition.toLong()
+                            isSeeking = false
+                            lastInteractionTime = System.currentTimeMillis()
+                        },
+                        colors = SliderDefaults.colors(
+                            thumbColor = VidooOrange,
+                            activeTrackColor = VidooOrange,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("player_seek_bar")
+                    )
 
-                    // Secondary Player Controls Row (Subtitles, Speed, Aspect Ratio, Rotation, Lock)
+                    // 3. Icon row (Subtitles, Speed, Aspect Ratio, Rotation, Lock) — right below the seek bar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1247,7 +1246,9 @@ fun PlayerScreen(
                                 srtPickerLauncher.launch(arrayOf("*/*"))
                                 lastInteractionTime = System.currentTimeMillis()
                             },
-                            modifier = Modifier.testTag("player_subtitles_button")
+                            modifier = Modifier
+                                .size(44.dp)
+                                .testTag("player_subtitles_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Subtitles,
@@ -1262,7 +1263,9 @@ fun PlayerScreen(
                                 showSpeedDialog = true
                                 lastInteractionTime = System.currentTimeMillis()
                             },
-                            modifier = Modifier.testTag("player_speed_button")
+                            modifier = Modifier
+                                .size(44.dp)
+                                .testTag("player_speed_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Speed,
@@ -1285,7 +1288,9 @@ fun PlayerScreen(
                                 showHud = true
                                 lastInteractionTime = System.currentTimeMillis()
                             },
-                            modifier = Modifier.testTag("player_aspect_ratio_button")
+                            modifier = Modifier
+                                .size(44.dp)
+                                .testTag("player_aspect_ratio_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.AspectRatio,
@@ -1307,7 +1312,9 @@ fun PlayerScreen(
                                 }
                                 lastInteractionTime = System.currentTimeMillis()
                             },
-                            modifier = Modifier.testTag("player_rotate_button")
+                            modifier = Modifier
+                                .size(44.dp)
+                                .testTag("player_rotate_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ScreenRotation,
@@ -1323,7 +1330,9 @@ fun PlayerScreen(
                                 showControls = false
                                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
                             },
-                            modifier = Modifier.testTag("player_lock_button")
+                            modifier = Modifier
+                                .size(44.dp)
+                                .testTag("player_lock_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.LockOpen,

@@ -14,6 +14,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -75,6 +76,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
@@ -500,7 +502,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     val sizes = listOf(
                         14f to "Small",
@@ -510,13 +512,31 @@ fun SettingsScreen(
                     )
                     sizes.forEach { (sizeSp, label) ->
                         val isSelected = settings.subtitleFontSizeSp == sizeSp
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { viewModel.setSubtitleFontSize(sizeSp) },
-                            label = { Text(label, fontSize = 13.sp) },
-                            colors = vidooFilterChipColors(isSelected),
-                            border = vidooFilterChipBorder(isSelected)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) VidooOrange.copy(alpha = 0.18f) else VidooCardBg,
+                            border = BorderStroke(
+                                if (isSelected) 1.5.dp else 1.dp,
+                                if (isSelected) VidooOrange else VidooBorder
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clickable { viewModel.setSubtitleFontSize(sizeSp) }
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) VidooOrange else VidooTextPrimary,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -532,7 +552,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     val colors = listOf(
                         "White" to Color.White,
@@ -542,25 +562,47 @@ fun SettingsScreen(
                     )
                     colors.forEach { (name, col) ->
                         val isSelected = settings.subtitleColor == name
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { viewModel.setSubtitleColor(name) },
-                            label = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(10.dp)
-                                            .clip(CircleShape)
-                                            .background(col)
-                                            .border(0.5.dp, Color.Gray, CircleShape)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(name, fontSize = 13.sp)
-                                }
-                            },
-                            colors = vidooFilterChipColors(isSelected),
-                            border = vidooFilterChipBorder(isSelected)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) VidooOrange.copy(alpha = 0.18f) else VidooCardBg,
+                            border = BorderStroke(
+                                if (isSelected) 1.5.dp else 1.dp,
+                                if (isSelected) VidooOrange else VidooBorder
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clickable { viewModel.setSubtitleColor(name) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(col)
+                                        .border(
+                                            0.5.dp,
+                                            if (col == Color.White) Color.Gray else Color.Transparent,
+                                            CircleShape
+                                        )
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = name,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) VidooOrange else VidooTextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 }
 
