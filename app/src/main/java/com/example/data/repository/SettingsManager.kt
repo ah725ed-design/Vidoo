@@ -17,7 +17,8 @@ data class AppSettings(
     val autoLockTimeoutSec: Int = 30, // 15, 30, 60, 120
     val hideShortVideos: Boolean = false,
     val shortVideoThresholdSec: Int = 30, // 30, 60, 120
-    val appLanguage: String = "en" // "en" or "ar"
+    val appLanguage: String = "en", // "en" or "ar"
+    val hasSeenGestureGuide: Boolean = false
 )
 
 class SettingsManager(context: Context) {
@@ -40,7 +41,8 @@ class SettingsManager(context: Context) {
             autoLockTimeoutSec = prefs.getInt("auto_lock_timeout_sec", 30),
             hideShortVideos = prefs.getBoolean("hide_short_videos", false),
             shortVideoThresholdSec = prefs.getInt("short_video_threshold_sec", 30),
-            appLanguage = prefs.getString("app_language", systemLang) ?: systemLang
+            appLanguage = prefs.getString("app_language", systemLang) ?: systemLang,
+            hasSeenGestureGuide = prefs.getBoolean("has_seen_gesture_guide", false)
         )
     }
 
@@ -97,5 +99,10 @@ class SettingsManager(context: Context) {
     fun setAppLanguage(langCode: String) {
         prefs.edit().putString("app_language", langCode).apply()
         _settings.value = _settings.value.copy(appLanguage = langCode)
+    }
+
+    fun setHasSeenGestureGuide(seen: Boolean) {
+        prefs.edit().putBoolean("has_seen_gesture_guide", seen).apply()
+        _settings.value = _settings.value.copy(hasSeenGestureGuide = seen)
     }
 }

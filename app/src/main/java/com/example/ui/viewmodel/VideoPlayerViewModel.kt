@@ -244,6 +244,7 @@ class VideoPlayerViewModel(application: Application) : AndroidViewModel(applicat
     fun setHideShortVideos(enabled: Boolean) = settingsManager.setHideShortVideos(enabled)
     fun setShortVideoThresholdSec(seconds: Int) = settingsManager.setShortVideoThresholdSec(seconds)
     fun setAppLanguage(langCode: String) = settingsManager.setAppLanguage(langCode)
+    fun setHasSeenGestureGuide(seen: Boolean) = settingsManager.setHasSeenGestureGuide(seen)
 
     fun clearAllHistory() {
         viewModelScope.launch {

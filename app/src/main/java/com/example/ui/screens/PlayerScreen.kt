@@ -3,8 +3,10 @@ package com.example.ui.screens
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -24,6 +26,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -62,6 +66,7 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -83,11 +88,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -105,12 +114,14 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -124,6 +135,7 @@ import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.viewmodel.VideoPlayerViewModel
 import com.example.util.LocalAppStrings
+import com.example.util.VideoThumbnailHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -142,6 +154,30 @@ enum class AspectRatioMode(val displayName: String, val mode: Int) {
     STRETCH("Stretch", AspectRatioFrameLayout.RESIZE_MODE_FILL)
 }
 
+private fun isRunningOnEmulator(): Boolean {
+    val fingerprint = Build.FINGERPRINT ?: ""
+    val model = Build.MODEL ?: ""
+    val manufacturer = Build.MANUFACTURER ?: ""
+    val hardware = Build.HARDWARE ?: ""
+    val product = Build.PRODUCT ?: ""
+    val brand = Build.BRAND ?: ""
+    val device = Build.DEVICE ?: ""
+    return fingerprint.startsWith("generic")
+            || fingerprint.startsWith("unknown")
+            || model.contains("google_sdk", ignoreCase = true)
+            || model.contains("Emulator", ignoreCase = true)
+            || model.contains("Android SDK built for", ignoreCase = true)
+            || manufacturer.contains("Genymotion", ignoreCase = true)
+            || (brand.startsWith("generic") && device.startsWith("generic"))
+            || "google_sdk" == product
+            || hardware.contains("goldfish", ignoreCase = true)
+            || hardware.contains("ranchu", ignoreCase = true)
+            || product.contains("sdk_gphone", ignoreCase = true)
+            || product.contains("vbox86p", ignoreCase = true)
+            || product.contains("emulator", ignoreCase = true)
+            || product.contains("simulator", ignoreCase = true)
+}
+
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(
@@ -158,6 +194,8 @@ fun PlayerScreen(
     val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
     val settings by viewModel.settings.collectAsState()
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // ExoPlayer instance configured with software decoder fallback and proper audio attributes
     val exoPlayer = remember {
@@ -170,10 +208,37 @@ fun PlayerScreen(
         val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
-        // Enable fallback to software decoders if hardware decoder component interface queries fail
+        // Enable fallback to software decoders and prioritize reliable software decoders (c2.android.*, OMX.google.*)
+        // to prevent CCodec / MediaCodec component interface resource failures (error 6: BAD_VALUE / NO_MEMORY)
+        // on virtualized emulator environments and OEM devices.
         val renderersFactory = DefaultRenderersFactory(context).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             setEnableDecoderFallback(true)
+            setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                val allDecoders = try {
+                    MediaCodecSelector.DEFAULT.getDecoderInfos(
+                        mimeType,
+                        requiresSecureDecoder,
+                        requiresTunnelingDecoder
+                    )
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                // Partition decoders: software decoders first (c2.android.*, OMX.google.*, or softwareOnly)
+                // Hardware decoders follow as secondary fallback.
+                val (softwareDecoders, hardwareDecoders) = allDecoders.partition {
+                    it.softwareOnly ||
+                            it.name.startsWith("c2.android.", ignoreCase = true) ||
+                            it.name.startsWith("OMX.google.", ignoreCase = true)
+                }
+
+                if (softwareDecoders.isNotEmpty()) {
+                    softwareDecoders + hardwareDecoders
+                } else {
+                    allDecoders
+                }
+            }
         }
 
         val audioAttributes = AudioAttributes.Builder()
@@ -217,6 +282,14 @@ fun PlayerScreen(
     var currentAspectRatio by remember { mutableStateOf(AspectRatioMode.FIT) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableFloatStateOf(settings.defaultPlaybackSpeed) }
+
+    // Video display frame and overlay control dimensions for precise vertical centering
+    val density = LocalDensity.current
+    var videoFrameWidth by remember { mutableIntStateOf(if (video.width > 0) video.width else 16) }
+    var videoFrameHeight by remember { mutableIntStateOf(if (video.height > 0) video.height else 9) }
+    var topBarHeightDp by remember { mutableStateOf(56.dp) }
+    var bottomControlsHeightDp by remember { mutableStateOf(100.dp) }
+    var centerControlsHeightDp by remember { mutableStateOf(68.dp) }
 
     // Gesture-based Speed & Rewind Hold state (Long-press left/right)
     var speedGestureActive by remember { mutableStateOf<SpeedGestureMode?>(null) }
@@ -267,7 +340,9 @@ fun PlayerScreen(
     // Keep screen on while playing and properly release player resources
     DisposableEffect(Unit) {
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        VideoThumbnailHelper.isPlaybackActive = true
         onDispose {
+            VideoThumbnailHelper.isPlaybackActive = false
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             // Restore portrait orientation upon exit
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -293,6 +368,8 @@ fun PlayerScreen(
     LaunchedEffect(video.contentUri) {
         currentPosition = 0L
         duration = video.durationMs
+        videoFrameWidth = if (video.width > 0) video.width else 16
+        videoFrameHeight = if (video.height > 0) video.height else 9
         playerErrorMessage = null
         autoRetryCount = 0
         subtitles = emptyList()
@@ -300,6 +377,10 @@ fun PlayerScreen(
         subtitleFileName = null
         showSubtitleInfo = false
         resumeNotification = null
+
+        // Stop and clear previous pipeline to ensure codecs are cleanly released before loading next video
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
 
         val mediaItem = MediaItem.fromUri(Uri.parse(video.contentUri))
         exoPlayer.setMediaItem(mediaItem)
@@ -329,6 +410,13 @@ fun PlayerScreen(
     // Listener for ExoPlayer state changes
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoFrameWidth = videoSize.width
+                    videoFrameHeight = videoSize.height
+                }
+            }
+
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
             }
@@ -346,15 +434,18 @@ fun PlayerScreen(
 
             override fun onPlayerError(error: PlaybackException) {
                 val cause = error.cause
-                val isDecoderReclaimed = error.errorCode == PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED ||
-                        error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+                val isDecoderIssue = error.errorCode == PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
 
-                if (isDecoderReclaimed && autoRetryCount < 2) {
+                if (isDecoderIssue && autoRetryCount < 2) {
                     autoRetryCount++
                     val savedPos = exoPlayer.currentPosition
                     coroutineScope.launch {
                         delay(350L)
                         try {
+                            exoPlayer.stop()
                             exoPlayer.prepare()
                             if (savedPos > 0L) {
                                 exoPlayer.seekTo(savedPos)
@@ -369,7 +460,7 @@ fun PlayerScreen(
                 }
 
                 playerErrorMessage = when {
-                    isDecoderReclaimed ->
+                    isDecoderIssue ->
                         strings.playerErrorDecoderReclaimed
                     cause is HttpDataSource.InvalidResponseCodeException ->
                         "Server responded with error (HTTP ${cause.responseCode})"
@@ -493,7 +584,7 @@ fun PlayerScreen(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
@@ -795,6 +886,7 @@ fun PlayerScreen(
                         fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 0.5.sp,
+                        fontFamily = com.example.ui.theme.NotoSansArabic,
                         style = androidx.compose.ui.text.TextStyle(
                             shadow = Shadow(
                                 color = Color.Black.copy(alpha = 0.75f),
@@ -811,6 +903,7 @@ fun PlayerScreen(
                         fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 0.5.sp,
+                        fontFamily = com.example.ui.theme.NotoSansArabic,
                         style = androidx.compose.ui.text.TextStyle(
                             shadow = Shadow(
                                 color = Color.Black.copy(alpha = 0.75f),
@@ -956,6 +1049,40 @@ fun PlayerScreen(
             }
         }
 
+        // Calculate visible video frame boundaries and vertical center between top bar and bottom controls
+        val containerW = maxWidth
+        val containerH = maxHeight
+        val vWidth = if (videoFrameWidth > 0) videoFrameWidth else 16
+        val vHeight = if (videoFrameHeight > 0) videoFrameHeight else 9
+        val videoAspect = vWidth.toFloat() / vHeight.toFloat()
+
+        val (videoTop, videoBottom) = when (currentAspectRatio) {
+            AspectRatioMode.FIT -> {
+                val containerAspect = if (containerH.value > 0f) containerW.value / containerH.value else 1.77f
+                if (containerAspect > videoAspect) {
+                    // Container is wider than video (pillarbox) -> video touches top and bottom of screen
+                    0.dp to containerH
+                } else {
+                    // Container is taller than video (letterbox) -> video touches left and right, centered vertically
+                    val renderedHeight = containerW / videoAspect
+                    val insetY = ((containerH - renderedHeight) / 2f).coerceAtLeast(0.dp)
+                    insetY to (insetY + renderedHeight)
+                }
+            }
+            AspectRatioMode.FILL, AspectRatioMode.STRETCH -> {
+                0.dp to containerH
+            }
+        }
+
+        // Exact vertical center of the video content area between the top bar and the bottom seek-bar/controls section
+        val effectiveTop = maxOf(videoTop, topBarHeightDp)
+        val effectiveBottom = minOf(videoBottom, (containerH - bottomControlsHeightDp).coerceAtLeast(effectiveTop))
+        val centerY = if (effectiveBottom > effectiveTop) {
+            (effectiveTop + effectiveBottom) / 2f
+        } else {
+            (videoTop + videoBottom) / 2f
+        }
+
         // Controls Overlay (Top bar, Center buttons, Bottom controls)
         AnimatedVisibility(
             visible = showControls && !isLocked,
@@ -963,19 +1090,28 @@ fun PlayerScreen(
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.45f))
-                    .statusBarsPadding()
-                    .navigationBarsPadding(),
-                verticalArrangement = Arrangement.SpaceBetween
+            Box(
+                modifier = Modifier.fillMaxSize()
             ) {
-                // Top Bar
+                // Top Bar with smooth vertical gradient overlay
                 Row(
                     modifier = Modifier
+                        .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Black.copy(alpha = 0.75f),
+                                    Color.Black.copy(alpha = 0.35f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                        .statusBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .onSizeChanged { size ->
+                            topBarHeightDp = with(density) { size.height.toDp() }
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
@@ -1003,14 +1139,92 @@ fun PlayerScreen(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+
+                    // Fullscreen / landscape toolbar: Subtitles, Aspect Ratio, Speed icons aligned with video title
+                    if (isLandscape) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Subtitle Button
+                            IconButton(
+                                onClick = {
+                                    srtPickerLauncher.launch(arrayOf("*/*"))
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("player_subtitles_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Subtitles,
+                                    contentDescription = strings.subtitles,
+                                    tint = if (subtitles.isNotEmpty()) VidooOrange else Color.White
+                                )
+                            }
+
+                            // Aspect Ratio Button
+                            IconButton(
+                                onClick = {
+                                    currentAspectRatio = when (currentAspectRatio) {
+                                        AspectRatioMode.FIT -> AspectRatioMode.FILL
+                                        AspectRatioMode.FILL -> AspectRatioMode.STRETCH
+                                        AspectRatioMode.STRETCH -> AspectRatioMode.FIT
+                                    }
+                                    val aspectLabel = when (currentAspectRatio) {
+                                        AspectRatioMode.FIT -> strings.aspectRatioFit
+                                        AspectRatioMode.FILL -> strings.aspectRatioFill
+                                        AspectRatioMode.STRETCH -> strings.aspectRatio16_9
+                                    }
+                                    hudText = "${strings.aspectRatio}: $aspectLabel"
+                                    hudIcon = Icons.Default.AspectRatio
+                                    hudPercentage = 1f
+                                    showHud = true
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("player_aspect_ratio_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AspectRatio,
+                                    contentDescription = strings.aspectRatio,
+                                    tint = Color.White
+                                )
+                            }
+
+                            // Playback Speed Button
+                            IconButton(
+                                onClick = {
+                                    showSpeedDialog = true
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("player_speed_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Speed,
+                                    contentDescription = strings.playbackSpeed,
+                                    tint = if (playbackSpeed != 1.0f) VidooOrange else Color.White
+                                )
+                            }
+                        }
+                    }
                 }
 
-                // Center Playback Action Buttons (Strictly centered in the middle of the screen)
+                // Center Playback Action Buttons (Positioned at the exact vertical center of the video content area)
+                val centerOffset = (centerY - (centerControlsHeightDp / 2f)).coerceIn(
+                    0.dp,
+                    (containerH - centerControlsHeightDp).coerceAtLeast(0.dp)
+                )
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
+                        .align(Alignment.TopCenter)
+                        .offset(y = centerOffset)
+                        .onSizeChanged { size ->
+                            centerControlsHeightDp = with(density) { size.height.toDp() }
+                        }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -1027,16 +1241,22 @@ fun PlayerScreen(
                                 }
                             },
                             enabled = hasPrevious,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = Color.Transparent,
+                                contentColor = Color.White,
+                                disabledContainerColor = Color.Transparent,
+                                disabledContentColor = Color.White.copy(alpha = 0.35f)
+                            ),
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(CircleShape)
-                                .background(if (hasPrevious) Color.Black.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.2f))
+                                .background(if (hasPrevious) Color.Black.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.3f))
                                 .testTag("player_previous_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SkipPrevious,
                                 contentDescription = "Previous video",
-                                tint = if (hasPrevious) Color.White else Color.White.copy(alpha = 0.3f),
+                                tint = if (hasPrevious) Color.White else Color.White.copy(alpha = 0.35f),
                                 modifier = Modifier.size(28.dp)
                             )
                         }
@@ -1134,31 +1354,48 @@ fun PlayerScreen(
                                 }
                             },
                             enabled = hasNext,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = Color.Transparent,
+                                contentColor = Color.White,
+                                disabledContainerColor = Color.Transparent,
+                                disabledContentColor = Color.White.copy(alpha = 0.35f)
+                            ),
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(CircleShape)
-                                .background(if (hasNext) Color.Black.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.2f))
+                                .background(if (hasNext) Color.Black.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.3f))
                                 .testTag("player_next_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SkipNext,
                                 contentDescription = "Next video",
-                                tint = if (hasNext) Color.White else Color.White.copy(alpha = 0.3f),
+                                tint = if (hasNext) Color.White else Color.White.copy(alpha = 0.35f),
                                 modifier = Modifier.size(28.dp)
                             )
                         }
                     }
                 }
 
-                // Bottom Controls Bar (Single cohesive connected block: Time display & Resolution, Seek bar, Icon row)
+                // Bottom Controls: No solid box background; semi-transparent gradient overlay directly over video;
+                // Seek bar first, then time label underneath, resolution badge removed during playback
                 Box(
                     modifier = Modifier
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.Black.copy(alpha = 0.75f))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.55f),
+                                    Color.Black.copy(alpha = 0.85f)
+                                )
+                            )
+                        )
+                        .navigationBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 8.dp, top = 16.dp)
+                        .onSizeChanged { size ->
+                            bottomControlsHeightDp = with(density) { size.height.toDp() }
+                        }
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -1167,25 +1404,82 @@ fun PlayerScreen(
                         val effectivePosition = if (isSeeking) seekPosition.toLong() else currentPosition
                         val safeDuration = duration.coerceAtLeast(1L)
 
-                        // 1. Time display & Resolution badge (stays as is, tightly aligned within this same block)
+                        // 1. Seek / progress bar with Rotate icon directly inline on the right
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Slider(
+                                value = (effectivePosition.toFloat() / safeDuration).coerceIn(0f, 1f),
+                                onValueChange = { fraction ->
+                                    isSeeking = true
+                                    seekPosition = fraction * safeDuration
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                onValueChangeFinished = {
+                                    exoPlayer.seekTo(seekPosition.toLong())
+                                    currentPosition = seekPosition.toLong()
+                                    isSeeking = false
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = VidooOrange,
+                                    activeTrackColor = VidooOrange,
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(30.dp)
+                                    .testTag("player_seek_bar")
+                            )
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            // Orientation / Rotate Button inline to the right of seek bar
+                            IconButton(
+                                onClick = {
+                                    activity?.let { act ->
+                                        val currentOrientation = act.requestedOrientation
+                                        act.requestedOrientation = if (currentOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+                                            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                        } else {
+                                            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                        }
+                                    }
+                                    lastInteractionTime = System.currentTimeMillis()
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("player_rotate_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ScreenRotation,
+                                    contentDescription = strings.rotateScreen,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+
+                        // 2. Time display below seek bar (matching YouTube, VLC, etc.) — resolution badge hidden during playback
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 4.dp),
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "${formatTime(effectivePosition)} / ${formatTime(duration)}",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                Text(
+                                    text = "${formatTime(effectivePosition)} / ${formatTime(duration)}",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+
                                 if (playbackSpeed != 1.0f) {
                                     Surface(
                                         color = VidooOrange.copy(alpha = 0.25f),
@@ -1200,161 +1494,121 @@ fun PlayerScreen(
                                         )
                                     }
                                 }
+                            }
 
-                                video.resolutionText()?.let { res ->
-                                    Surface(
-                                        color = Color.White.copy(alpha = 0.18f),
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        Text(
-                                            text = res,
-                                            color = Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                        )
-                                    }
+                            if (isLandscape) {
+                                IconButton(
+                                    onClick = {
+                                        isLocked = true
+                                        showControls = false
+                                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                                    },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .testTag("player_lock_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LockOpen,
+                                        contentDescription = strings.lockScreen,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
                         }
 
-                        // 2. Seek/progress bar — right below the time display
-                        Slider(
-                            value = (effectivePosition.toFloat() / safeDuration).coerceIn(0f, 1f),
-                            onValueChange = { fraction ->
-                                isSeeking = true
-                                seekPosition = fraction * safeDuration
-                                lastInteractionTime = System.currentTimeMillis()
-                            },
-                            onValueChangeFinished = {
-                                exoPlayer.seekTo(seekPosition.toLong())
-                                currentPosition = seekPosition.toLong()
-                                isSeeking = false
-                                lastInteractionTime = System.currentTimeMillis()
-                            },
-                            colors = SliderDefaults.colors(
-                                thumbColor = VidooOrange,
-                                activeTrackColor = VidooOrange,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(32.dp)
-                                .testTag("player_seek_bar")
-                        )
+                        // 3. Secondary icon row (Subtitles, Speed, Aspect Ratio, Lock) — shown in portrait mode
+                        if (!isLandscape) {
+                            Spacer(modifier = Modifier.height(2.dp))
 
-                        // 3. Icon row (Subtitles, Speed, Aspect Ratio, Rotate, Lock) — right below the seek bar
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("player_secondary_controls_row"),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Subtitle Button
-                            IconButton(
-                                onClick = {
-                                    srtPickerLauncher.launch(arrayOf("*/*"))
-                                    lastInteractionTime = System.currentTimeMillis()
-                                },
+                            Row(
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .testTag("player_subtitles_button")
+                                    .fillMaxWidth()
+                                    .testTag("player_secondary_controls_row"),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Subtitles,
-                                    contentDescription = strings.subtitles,
-                                    tint = if (subtitles.isNotEmpty()) VidooOrange else Color.White
-                                )
-                            }
+                                // Subtitle Button
+                                IconButton(
+                                    onClick = {
+                                        srtPickerLauncher.launch(arrayOf("*/*"))
+                                        lastInteractionTime = System.currentTimeMillis()
+                                    },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .testTag("player_subtitles_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Subtitles,
+                                        contentDescription = strings.subtitles,
+                                        tint = if (subtitles.isNotEmpty()) VidooOrange else Color.White
+                                    )
+                                }
 
-                            // Playback Speed Button
-                            IconButton(
-                                onClick = {
-                                    showSpeedDialog = true
-                                    lastInteractionTime = System.currentTimeMillis()
-                                },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .testTag("player_speed_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Speed,
-                                    contentDescription = strings.playbackSpeed,
-                                    tint = if (playbackSpeed != 1.0f) VidooOrange else Color.White
-                                )
-                            }
+                                // Playback Speed Button
+                                IconButton(
+                                    onClick = {
+                                        showSpeedDialog = true
+                                        lastInteractionTime = System.currentTimeMillis()
+                                    },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .testTag("player_speed_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Speed,
+                                        contentDescription = strings.playbackSpeed,
+                                        tint = if (playbackSpeed != 1.0f) VidooOrange else Color.White
+                                    )
+                                }
 
-                            // Aspect Ratio Button
-                            IconButton(
-                                onClick = {
-                                    currentAspectRatio = when (currentAspectRatio) {
-                                        AspectRatioMode.FIT -> AspectRatioMode.FILL
-                                        AspectRatioMode.FILL -> AspectRatioMode.STRETCH
-                                        AspectRatioMode.STRETCH -> AspectRatioMode.FIT
-                                    }
-                                    val aspectLabel = when (currentAspectRatio) {
-                                        AspectRatioMode.FIT -> strings.aspectRatioFit
-                                        AspectRatioMode.FILL -> strings.aspectRatioFill
-                                        AspectRatioMode.STRETCH -> strings.aspectRatio16_9
-                                    }
-                                    hudText = "${strings.aspectRatio}: $aspectLabel"
-                                    hudIcon = Icons.Default.AspectRatio
-                                    hudPercentage = 1f
-                                    showHud = true
-                                    lastInteractionTime = System.currentTimeMillis()
-                                },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .testTag("player_aspect_ratio_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AspectRatio,
-                                    contentDescription = strings.aspectRatio,
-                                    tint = Color.White
-                                )
-                            }
-
-                            // Orientation / Rotate Button
-                            IconButton(
-                                onClick = {
-                                    activity?.let { act ->
-                                        val currentOrientation = act.requestedOrientation
-                                        act.requestedOrientation = if (currentOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
-                                            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                        } else {
-                                            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                // Aspect Ratio Button
+                                IconButton(
+                                    onClick = {
+                                        currentAspectRatio = when (currentAspectRatio) {
+                                            AspectRatioMode.FIT -> AspectRatioMode.FILL
+                                            AspectRatioMode.FILL -> AspectRatioMode.STRETCH
+                                            AspectRatioMode.STRETCH -> AspectRatioMode.FIT
                                         }
-                                    }
-                                    lastInteractionTime = System.currentTimeMillis()
-                                },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .testTag("player_rotate_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ScreenRotation,
-                                    contentDescription = strings.rotateScreen,
-                                    tint = Color.White
-                                )
-                            }
+                                        val aspectLabel = when (currentAspectRatio) {
+                                            AspectRatioMode.FIT -> strings.aspectRatioFit
+                                            AspectRatioMode.FILL -> strings.aspectRatioFill
+                                            AspectRatioMode.STRETCH -> strings.aspectRatio16_9
+                                        }
+                                        hudText = "${strings.aspectRatio}: $aspectLabel"
+                                        hudIcon = Icons.Default.AspectRatio
+                                        hudPercentage = 1f
+                                        showHud = true
+                                        lastInteractionTime = System.currentTimeMillis()
+                                    },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .testTag("player_aspect_ratio_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AspectRatio,
+                                        contentDescription = strings.aspectRatio,
+                                        tint = Color.White
+                                    )
+                                }
 
-                            // Screen Lock Button
-                            IconButton(
-                                onClick = {
-                                    isLocked = true
-                                    showControls = false
-                                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
-                                },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .testTag("player_lock_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LockOpen,
-                                    contentDescription = strings.lockScreen,
-                                    tint = Color.White
-                                )
+                                // Screen Lock Button
+                                IconButton(
+                                    onClick = {
+                                        isLocked = true
+                                        showControls = false
+                                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                                    },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .testTag("player_lock_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LockOpen,
+                                        contentDescription = strings.lockScreen,
+                                        tint = Color.White
+                                    )
+                                }
                             }
                         }
                     }

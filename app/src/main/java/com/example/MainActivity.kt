@@ -364,11 +364,12 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
 
         val currentVideoIndex = remember(playingVideo, effectiveQueue) {
             if (playingVideo == null) -1
-            else effectiveQueue.indexOfFirst { it.contentUri == playingVideo?.contentUri }
+            else effectiveQueue.indexOfFirst { it.id == playingVideo?.id || it.contentUri == playingVideo?.contentUri }
         }
 
-        val hasPrevious = currentVideoIndex > 0
-        val hasNext = currentVideoIndex in 0 until (effectiveQueue.size - 1)
+        // Only genuinely disabled when there are no other videos in the library/queue (size <= 1)
+        val hasPrevious = effectiveQueue.size > 1 || currentVideoIndex > 0
+        val hasNext = effectiveQueue.size > 1 || (currentVideoIndex in 0 until (effectiveQueue.size - 1))
 
         if (playingVideo != null) {
             PlayerScreen(
@@ -377,15 +378,17 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                 hasPrevious = hasPrevious,
                 hasNext = hasNext,
                 onPlayPrevious = {
-                    if (currentVideoIndex > 0) {
-                        val prevVideo = effectiveQueue[currentVideoIndex - 1]
+                    if (effectiveQueue.isNotEmpty()) {
+                        val prevIndex = if (currentVideoIndex > 0) currentVideoIndex - 1 else effectiveQueue.size - 1
+                        val prevVideo = effectiveQueue[prevIndex]
                         viewModel.recordVideoPlayed(prevVideo.id)
                         playingVideo = prevVideo
                     }
                 },
                 onPlayNext = {
-                    if (currentVideoIndex in 0 until (effectiveQueue.size - 1)) {
-                        val nextVideo = effectiveQueue[currentVideoIndex + 1]
+                    if (effectiveQueue.isNotEmpty()) {
+                        val nextIndex = if (currentVideoIndex in 0 until (effectiveQueue.size - 1)) currentVideoIndex + 1 else 0
+                        val nextVideo = effectiveQueue[nextIndex]
                         viewModel.recordVideoPlayed(nextVideo.id)
                         playingVideo = nextVideo
                     }

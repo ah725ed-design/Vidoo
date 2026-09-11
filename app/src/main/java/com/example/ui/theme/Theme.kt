@@ -1,8 +1,10 @@
 package com.example.ui.theme
 
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
 private val VidooDarkColorScheme = darkColorScheme(
@@ -38,7 +40,12 @@ fun MyApplicationTheme(
   MaterialTheme(
     colorScheme = VidooDarkColorScheme,
     typography = Typography,
-    content = content
-  )
+  ) {
+    CompositionLocalProvider(
+      LocalTextStyle provides MaterialTheme.typography.bodyLarge.copy(fontFamily = NotoSansArabic),
+      content = content
+    )
+  }
 }
+
 

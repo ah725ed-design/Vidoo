@@ -17,11 +17,16 @@ object VideoThumbnailHelper {
     private val memoryCache: LruCache<String, Bitmap> = LruCache(100)
     private val failedIds = Collections.synchronizedSet(HashSet<Long>())
     private val thumbnailMutex = Mutex()
+    @Volatile
+    var isPlaybackActive: Boolean = false
 
     suspend fun getThumbnail(context: Context, videoId: Long, videoUriString: String): Bitmap? =
         withContext(Dispatchers.IO) {
             val cacheKey = "$videoId"
             memoryCache.get(cacheKey)?.let { return@withContext it }
+
+            // While video player is actively using video codecs, defer background thumbnail queries
+            if (isPlaybackActive) return@withContext null
 
             // If already known to fail or not a MediaStore content URI (e.g. sample or remote streams), skip immediately
             if (failedIds.contains(videoId)) return@withContext null

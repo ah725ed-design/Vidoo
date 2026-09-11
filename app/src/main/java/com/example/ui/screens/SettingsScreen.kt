@@ -37,6 +37,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Person
@@ -316,6 +317,47 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                    }
+                }
+
+                HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 12.dp))
+
+                // Gesture controls guide setting
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = strings.gestureGuideTitle,
+                            color = VidooTextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = strings.gestureGuideSubtitle,
+                            color = VidooTextTertiary,
+                            fontSize = 12.sp
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.setHasSeenGestureGuide(false)
+                            Toast.makeText(context, strings.gestureGuideTitle, Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("reset_gesture_guide_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.HelpOutline,
+                            contentDescription = null,
+                            tint = VidooOrange,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(strings.retry, color = VidooOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
