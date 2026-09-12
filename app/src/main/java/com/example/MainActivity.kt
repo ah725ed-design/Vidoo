@@ -195,6 +195,13 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
         viewModel.updatePermissionState(isGranted)
     }
 
+    // Auto-request permission on launch if not already granted
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!uiState.permissionGranted) {
+            permissionLauncher.launch(storagePermission)
+        }
+    }
+
     // Re-check permission when returning to the app from background or system settings
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->

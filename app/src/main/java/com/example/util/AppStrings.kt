@@ -183,6 +183,8 @@ data class AppStrings(
     val grantStorageAccess: String,
     val storageAccessRequired: String,
     val permissionRationale: String,
+    val openSettings: String,
+    val retryRequest: String,
     val restart: String
 ) {
     companion object {
@@ -350,6 +352,8 @@ data class AppStrings(
             grantStorageAccess = "Grant Storage Access",
             storageAccessRequired = "Storage Access Required",
             permissionRationale = "Vidoo scans your device storage to list, organize, and play your local videos without sending any data online.",
+            openSettings = "Open App Settings",
+            retryRequest = "Retry Permission",
             restart = "Restart"
         )
 
@@ -517,6 +521,8 @@ data class AppStrings(
             grantStorageAccess = "منح إذن الوصول للتخزين",
             storageAccessRequired = "مطلوب إذن الوصول إلى مساحة التخزين",
             permissionRationale = "يقوم Vidoo بفحص مساحة تخزين جهازك لعرض وتنظيم وتشغيل فيديوهاتك المحلية دون إرسال أي بيانات عبر الإنترنت.",
+            openSettings = "فتح إعدادات التطبيق",
+            retryRequest = "إعادة المحاولة",
             restart = "إعادة البدء"
         )
     }

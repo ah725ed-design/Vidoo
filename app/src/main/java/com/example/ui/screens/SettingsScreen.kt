@@ -37,7 +37,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Person
@@ -45,7 +44,6 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -319,47 +317,6 @@ fun SettingsScreen(
                         }
                     }
                 }
-
-                HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 12.dp))
-
-                // Gesture controls guide setting
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = strings.gestureGuideTitle,
-                            color = VidooTextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = strings.gestureGuideSubtitle,
-                            color = VidooTextTertiary,
-                            fontSize = 12.sp
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.setHasSeenGestureGuide(false)
-                            Toast.makeText(context, strings.gestureGuideTitle, Toast.LENGTH_SHORT).show()
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("reset_gesture_guide_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.HelpOutline,
-                            contentDescription = null,
-                            tint = VidooOrange,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(strings.retry, color = VidooOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
             }
         }
 
@@ -482,213 +439,7 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(20.dp))
 
         // ==========================================
-        // 3. SUBTITLE APPEARANCE
-        // ==========================================
-        SettingsSectionHeader(title = strings.sectionSubtitles, icon = Icons.Default.Subtitles)
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = VidooCardBg)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                // Live subtitle preview
-                Text(
-                    text = strings.subtitlePreviewSample,
-                    color = VidooTextTertiary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(72.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black)
-                        .border(1.dp, VidooBorder, RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val previewColor = when (settings.subtitleColor) {
-                        "Yellow" -> Color(0xFFFFEB3B)
-                        "Cyan" -> Color(0xFF00E5FF)
-                        "Green" -> Color(0xFF69F0AE)
-                        "Orange" -> VidooOrange
-                        else -> Color.White
-                    }
-
-                    Surface(
-                        color = if (settings.subtitleBackground) Color.Black.copy(alpha = 0.75f) else Color.Transparent,
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = strings.subtitlePreviewSample,
-                            color = previewColor,
-                            fontSize = settings.subtitleFontSizeSp.sp,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Font size
-                Text(
-                    text = strings.subtitleFontSizeTitle,
-                    color = VidooTextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val sizes = listOf<Pair<Float, String>>(
-                        14f to strings.fontSmall,
-                        18f to strings.fontMedium,
-                        22f to strings.fontLarge,
-                        26f to strings.fontExtra
-                    )
-                    sizes.forEach { (sizeSp, label) ->
-                        val isSelected = settings.subtitleFontSizeSp == sizeSp
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) VidooOrange.copy(alpha = 0.18f) else VidooCardBg,
-                            border = BorderStroke(
-                                if (isSelected) 1.5.dp else 1.dp,
-                                if (isSelected) VidooOrange else VidooBorder
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(36.dp)
-                                .clickable { viewModel.setSubtitleFontSize(sizeSp) }
-                        ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) VidooOrange else VidooTextPrimary,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Text color
-                Text(
-                    text = strings.subtitleColorTitle,
-                    color = VidooTextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val colors = listOf(
-                        "White" to (Color.White to strings.colorWhite),
-                        "Yellow" to (Color(0xFFFFEB3B) to strings.colorYellow),
-                        "Cyan" to (Color(0xFF00E5FF) to strings.colorCyan),
-                        "Green" to (Color(0xFF69F0AE) to strings.colorGreen)
-                    )
-                    colors.forEach { (key, pair) ->
-                        val (col, label) = pair
-                        val isSelected = settings.subtitleColor == key
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) VidooOrange.copy(alpha = 0.18f) else VidooCardBg,
-                            border = BorderStroke(
-                                if (isSelected) 1.5.dp else 1.dp,
-                                if (isSelected) VidooOrange else VidooBorder
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(34.dp)
-                                .clickable { viewModel.setSubtitleColor(key) }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 2.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(col)
-                                        .border(
-                                            0.5.dp,
-                                            if (col == Color.White) Color.Gray else Color.Transparent,
-                                            CircleShape
-                                        )
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = label,
-                                    fontSize = 9.5.sp,
-                                    letterSpacing = (-0.3).sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) VidooOrange else VidooTextPrimary,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = VidooBorder, modifier = Modifier.padding(vertical = 12.dp))
-
-                // Semi-transparent background toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = strings.subtitleBackgroundTitle,
-                            color = VidooTextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = strings.subtitleBackgroundSubtitle,
-                            color = VidooTextTertiary,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Switch(
-                        checked = settings.subtitleBackground,
-                        onCheckedChange = { viewModel.setSubtitleBackground(it) },
-                        colors = vidooSwitchColors(),
-                        modifier = Modifier.testTag("subtitle_background_switch")
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // ==========================================
-        // 4. STORAGE
+        // 3. STORAGE
         // ==========================================
         SettingsSectionHeader(title = strings.sectionStorage, icon = Icons.Default.Storage)
 
@@ -770,7 +521,7 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(20.dp))
 
         // ==========================================
-        // 5. LANGUAGE
+        // 4. LANGUAGE
         // ==========================================
         SettingsSectionHeader(title = strings.sectionLanguage, icon = Icons.Default.Language)
 
@@ -831,7 +582,7 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(20.dp))
 
         // ==========================================
-        // 6. ABOUT
+        // 5. ABOUT
         // ==========================================
         SettingsSectionHeader(title = strings.sectionAbout, icon = Icons.Default.Info)
 
