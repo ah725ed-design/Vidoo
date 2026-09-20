@@ -160,6 +160,7 @@ enum class SpeedGestureMode {
     REWIND_2X
 }
 
+@OptIn(UnstableApi::class)
 enum class AspectRatioMode(val displayName: String, val mode: Int) {
     FIT("Fit", AspectRatioFrameLayout.RESIZE_MODE_FIT),
     FILL("Crop / Fill", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
@@ -221,10 +222,12 @@ fun PlayerScreen(
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
         // Use DefaultRenderersFactory with decoder fallback enabled so ExoPlayer queries
-        // system codecs using standard platform mechanisms.
+        // system codecs using standard platform mechanisms and falls back gracefully if hardware
+        // resource interfaces are unavailable.
         val renderersFactory = DefaultRenderersFactory(context).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             setEnableDecoderFallback(true)
+            setAllowedVideoJoiningTimeMs(5000)
         }
 
         val audioAttributes = AudioAttributes.Builder()
@@ -290,9 +293,6 @@ fun PlayerScreen(
     // Gesture Help Guide Overlay state
     var showGestureGuide by remember { mutableStateOf(!settings.hasSeenGestureGuide) }
 
-    // Resume pill
-    var resumeNotification by remember { mutableStateOf<String?>(null) }
-
     // System Audio Manager safely retrieved
     val audioManager = remember {
         try {
@@ -322,6 +322,18 @@ fun PlayerScreen(
     }
     var volumeFractionAccumulator by remember { mutableFloatStateOf(volumePercentage) }
     var volumeOverlayDismissJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    // Vertical swipe for Brightness overlay state (matching Volume overlay exactly)
+    var showBrightnessOverlay by remember { mutableStateOf(false) }
+    var brightnessPercentage by remember {
+        mutableFloatStateOf(
+            activity?.window?.attributes?.screenBrightness.let { b ->
+                if (b == null || b < 0f) 0.5f else b.coerceIn(0.01f, 1.0f)
+            }
+        )
+    }
+    var brightnessFractionAccumulator by remember { mutableFloatStateOf(brightnessPercentage) }
+    var brightnessOverlayDismissJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // Horizontal swipe for Seek overlay state
     var isHorizontalSeekGesture by remember { mutableStateOf(false) }
@@ -394,7 +406,6 @@ fun PlayerScreen(
         activeSubtitleText = ""
         subtitleFileName = null
         showSubtitleInfo = false
-        resumeNotification = null
 
         // Stop and clear previous pipeline to ensure codecs are cleanly released before loading next video
         exoPlayer.stop()
@@ -413,8 +424,6 @@ fun PlayerScreen(
             if (savedPos > 5000L && (video.durationMs <= 0L || savedPos < video.durationMs - 2000L)) {
                 exoPlayer.seekTo(savedPos)
                 currentPosition = savedPos
-                val timeStr = formatTime(savedPos)
-                resumeNotification = "${strings.resumedFrom} $timeStr"
                 resumed = true
             }
         }
@@ -443,6 +452,7 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) {
                     duration = exoPlayer.duration.coerceAtLeast(0L)
                     playerErrorMessage = null
+                    autoRetryCount = 0
                 } else if (state == Player.STATE_ENDED) {
                     isPlaying = false
                     showControls = true
@@ -452,12 +462,16 @@ fun PlayerScreen(
 
             override fun onPlayerError(error: PlaybackException) {
                 val cause = error.cause
+                val errorMsg = error.localizedMessage?.lowercase() ?: ""
                 val isDecoderIssue = error.errorCode == PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED ||
                         error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
                         error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
-                        error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
+                        error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+                        errorMsg.contains("decoder") ||
+                        errorMsg.contains("codec") ||
+                        errorMsg.contains("resource")
 
-                if (isDecoderIssue && autoRetryCount < 2) {
+                if (isDecoderIssue && autoRetryCount < 3) {
                     autoRetryCount++
                     val savedPos = exoPlayer.currentPosition
                     coroutineScope.launch {
@@ -564,14 +578,6 @@ fun PlayerScreen(
         if (showHud) {
             delay(1200)
             showHud = false
-        }
-    }
-
-    // Auto-dismiss resume notification
-    LaunchedEffect(resumeNotification) {
-        if (resumeNotification != null) {
-            delay(3000)
-            resumeNotification = null
         }
     }
 
@@ -727,11 +733,15 @@ fun PlayerScreen(
                                 horizontalSeekInitialPos = exoPlayer.currentPosition
                                 volumeOverlayDismissJob?.cancel()
                                 seekOverlayDismissJob?.cancel()
+                                brightnessOverlayDismissJob?.cancel()
                                 val currentVol = try {
                                     audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
                                 } catch (_: Exception) { 0 }
                                 volumePercentage = (currentVol.toFloat() / maxVolume).coerceIn(0f, 1f)
                                 volumeFractionAccumulator = volumePercentage
+                                val curBrightness = activity?.window?.attributes?.screenBrightness ?: 0.5f
+                                brightnessPercentage = if (curBrightness < 0f) 0.5f else curBrightness.coerceIn(0.01f, 1.0f)
+                                brightnessFractionAccumulator = brightnessPercentage
                             },
                             onDragEnd = {
                                 if (activeGestureType == DragGestureType.HORIZONTAL_SEEK) {
@@ -749,9 +759,10 @@ fun PlayerScreen(
                                         showVolumeOverlay = false
                                     }
                                 } else if (activeGestureType == DragGestureType.VERTICAL_BRIGHTNESS) {
-                                    coroutineScope.launch {
+                                    brightnessOverlayDismissJob?.cancel()
+                                    brightnessOverlayDismissJob = coroutineScope.launch {
                                         delay(1000L)
-                                        showHud = false
+                                        showBrightnessOverlay = false
                                     }
                                 }
                                 activeGestureType = DragGestureType.NONE
@@ -763,6 +774,12 @@ fun PlayerScreen(
                                     volumeOverlayDismissJob = coroutineScope.launch {
                                         delay(1000L)
                                         showVolumeOverlay = false
+                                    }
+                                } else if (activeGestureType == DragGestureType.VERTICAL_BRIGHTNESS) {
+                                    brightnessOverlayDismissJob?.cancel()
+                                    brightnessOverlayDismissJob = coroutineScope.launch {
+                                        delay(1000L)
+                                        showBrightnessOverlay = false
                                     }
                                 }
                                 isHorizontalSeekGesture = false
@@ -790,6 +807,7 @@ fun PlayerScreen(
                                                 showVolumeOverlay = true
                                             } else {
                                                 activeGestureType = DragGestureType.VERTICAL_BRIGHTNESS
+                                                showBrightnessOverlay = true
                                             }
                                         }
                                     }
@@ -818,19 +836,15 @@ fun PlayerScreen(
                                     }
                                     DragGestureType.VERTICAL_BRIGHTNESS -> {
                                         val deltaY = -dragAmount.y
-                                        val currentBrightness = activity?.window?.attributes?.screenBrightness ?: 0.5f
-                                        val safeCurrent = if (currentBrightness < 0f) 0.5f else currentBrightness
-                                        val step = deltaY / size.height * 1.5f
-                                        val newBrightness = (safeCurrent + step).coerceIn(0.01f, 1.0f)
+                                        val deltaBrightness = deltaY / (size.height * 0.70f)
+                                        brightnessFractionAccumulator = (brightnessFractionAccumulator + deltaBrightness).coerceIn(0.01f, 1.0f)
                                         activity?.let { act ->
                                             val lp = act.window.attributes
-                                            lp.screenBrightness = newBrightness
+                                            lp.screenBrightness = brightnessFractionAccumulator
                                             act.window.attributes = lp
                                         }
-                                        hudIcon = Icons.Default.BrightnessMedium
-                                        hudPercentage = newBrightness
-                                        hudText = "${strings.brightnessLabel} ${(newBrightness * 100).roundToInt()}%"
-                                        showHud = true
+                                        brightnessPercentage = brightnessFractionAccumulator
+                                        showBrightnessOverlay = true
                                         lastInteractionTime = System.currentTimeMillis()
                                     }
                                     DragGestureType.NONE -> {}
@@ -924,7 +938,7 @@ fun PlayerScreen(
             }
         }
 
-        // Vertical Volume Control Overlay (TikTok/Instagram style floating slider on right side)
+        // Vertical Volume Control Overlay (Floating clean slider directly over video, no capsule)
         AnimatedVisibility(
             visible = showVolumeOverlay,
             enter = fadeIn() + scaleIn(initialScale = 0.90f),
@@ -934,58 +948,100 @@ fun PlayerScreen(
                 .padding(end = 24.dp)
                 .testTag("player_vertical_volume_overlay")
         ) {
-            Surface(
-                color = Color.Black.copy(alpha = 0.85f),
-                shape = RoundedCornerShape(22.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, VidooBorder),
+            Column(
                 modifier = Modifier
-                    .width(44.dp)
-                    .height(160.dp)
+                    .width(36.dp)
+                    .height(150.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(vertical = 12.dp, horizontal = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    val speakerIcon = when {
-                        volumePercentage <= 0.01f -> Icons.Default.VolumeMute
-                        volumePercentage < 0.5f -> Icons.Default.VolumeDown
-                        else -> Icons.Default.VolumeUp
-                    }
-                    Icon(
-                        imageVector = speakerIcon,
-                        contentDescription = strings.volumeLabel,
-                        tint = if (volumePercentage > 0.01f) VidooOrange else Color.White.copy(alpha = 0.6f),
-                        modifier = Modifier.size(22.dp)
-                    )
+                val speakerIcon = when {
+                    volumePercentage <= 0.01f -> Icons.Default.VolumeMute
+                    volumePercentage < 0.5f -> Icons.Default.VolumeDown
+                    else -> Icons.Default.VolumeUp
+                }
+                Icon(
+                    imageVector = speakerIcon,
+                    contentDescription = strings.volumeLabel,
+                    tint = if (volumePercentage > 0.01f) VidooOrange else Color.White.copy(alpha = 0.6f),
+                    modifier = Modifier.size(24.dp)
+                )
 
-                    // Vertical volume bar track with orange fill
+                // Vertical volume bar track with orange fill
+                Box(
+                    modifier = Modifier
+                        .width(6.dp)
+                        .height(86.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
                     Box(
                         modifier = Modifier
-                            .width(8.dp)
-                            .height(84.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF2E2E2E)),
-                        contentAlignment = Alignment.BottomCenter
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .fillMaxHeight(volumePercentage.coerceIn(0f, 1f))
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(VidooOrange)
-                        )
-                    }
-
-                    Text(
-                        text = "${(volumePercentage * 100).roundToInt()}%",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                            .fillMaxWidth()
+                            .fillMaxHeight(volumePercentage.coerceIn(0f, 1f))
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(VidooOrange)
                     )
                 }
+
+                Text(
+                    text = "${(volumePercentage * 100).roundToInt()}%",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // Vertical Brightness Control Overlay (Floating clean slider directly over video, no capsule)
+        AnimatedVisibility(
+            visible = showBrightnessOverlay,
+            enter = fadeIn() + scaleIn(initialScale = 0.90f),
+            exit = fadeOut() + scaleOut(targetScale = 0.90f),
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 24.dp)
+                .testTag("player_vertical_brightness_overlay")
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(36.dp)
+                    .height(150.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Icon(
+                    imageVector = Icons.Default.BrightnessMedium,
+                    contentDescription = strings.brightnessLabel,
+                    tint = VidooOrange,
+                    modifier = Modifier.size(24.dp)
+                )
+
+                // Vertical brightness bar track with orange fill
+                Box(
+                    modifier = Modifier
+                        .width(6.dp)
+                        .height(86.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(brightnessPercentage.coerceIn(0f, 1f))
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(VidooOrange)
+                    )
+                }
+
+                Text(
+                    text = "${(brightnessPercentage * 100).roundToInt()}%",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
 
@@ -1146,41 +1202,6 @@ fun PlayerScreen(
                         contentDescription = "Fast Forward 2x",
                         tint = VidooOrange,
                         modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-        }
-
-        // Resume playback notification pill
-        resumeNotification?.let { msg ->
-            Surface(
-                color = VidooSurface,
-                shape = RoundedCornerShape(20.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, VidooOrange),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 70.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = msg,
-                        color = VidooTextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = strings.restart,
-                        color = VidooOrange,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable {
-                            exoPlayer.seekTo(0L)
-                            resumeNotification = null
-                        }
                     )
                 }
             }

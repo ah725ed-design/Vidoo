@@ -243,7 +243,7 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                    val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f)
                     speeds.forEach { speed ->
                         val isSelected = settings.defaultPlaybackSpeed == speed
                         FilterChip(

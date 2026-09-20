@@ -406,13 +406,3 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
     }
 }
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(text = "Hello $name!", modifier = modifier, color = VidooTextPrimary)
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    MyApplicationTheme { Greeting("Android") }
-}

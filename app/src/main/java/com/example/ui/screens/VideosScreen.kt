@@ -3,12 +3,14 @@ package com.example.ui.screens
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,6 +28,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
@@ -39,8 +43,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,10 +55,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.VideoItem
@@ -117,54 +124,95 @@ fun VideosScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Search bar
-                OutlinedTextField(
-                    value = uiState.searchQuery,
-                    onValueChange = { viewModel.setSearchQuery(it) },
-                    placeholder = { Text(strings.searchVideosPlaceholder, color = VidooTextTertiary, fontSize = 14.sp) },
-                    leadingIcon = {
+                // Search bar (Capsule design with perfectly aligned and centered text)
+                var isSearchFocused by remember { mutableStateOf(false) }
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(CircleShape)
+                        .background(VidooSurface)
+                        .border(
+                            width = 1.dp,
+                            color = if (isSearchFocused) VidooOrange else VidooBorder,
+                            shape = CircleShape
+                        )
+                        .padding(start = 7.dp, end = 12.dp)
+                        .testTag("video_search_input"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Circular Search icon badge
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(VidooOrange.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = strings.searchVideosPlaceholder,
-                            tint = VidooTextSecondary,
-                            modifier = Modifier.size(20.dp)
+                            tint = VidooOrange,
+                            modifier = Modifier.size(18.dp)
                         )
-                    },
-                    trailingIcon = {
-                        if (uiState.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = strings.clear,
-                                    tint = VidooTextSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    // Text & Placeholder container perfectly centered vertically
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (uiState.searchQuery.isEmpty()) {
+                            Text(
+                                text = strings.searchVideosPlaceholder,
+                                color = VidooTextTertiary,
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = VidooTextPrimary,
-                        unfocusedTextColor = VidooTextPrimary,
-                        focusedContainerColor = VidooSurface,
-                        unfocusedContainerColor = VidooSurface,
-                        focusedBorderColor = VidooOrange,
-                        unfocusedBorderColor = VidooBorder,
-                        cursorColor = VidooOrange
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .testTag("video_search_input")
-                )
+                        BasicTextField(
+                            value = uiState.searchQuery,
+                            onValueChange = { viewModel.setSearchQuery(it) },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                color = VidooTextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Normal
+                            ),
+                            cursorBrush = SolidColor(VidooOrange),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onFocusChanged { isSearchFocused = it.isFocused }
+                        )
+                    }
+
+                    if (uiState.searchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { viewModel.setSearchQuery("") },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = strings.clear,
+                                tint = VidooTextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
 
                 // Sort Button
                 IconButton(
                     onClick = { showSortDialog = true },
                     modifier = Modifier
                         .size(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(CircleShape)
                         .background(VidooSurface)
                         .testTag("sort_button")
                 ) {
@@ -180,7 +228,7 @@ fun VideosScreen(
                     onClick = { viewModel.toggleGridView() },
                     modifier = Modifier
                         .size(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(CircleShape)
                         .background(VidooSurface)
                         .testTag("toggle_view_button")
                 ) {
