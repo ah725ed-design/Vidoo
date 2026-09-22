@@ -44,6 +44,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
@@ -122,7 +123,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -210,7 +210,7 @@ fun PlayerScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    // ExoPlayer instance configured with software decoder fallback and proper audio attributes
+    // ExoPlayer instance configured with decoder fallback and proper audio attributes
     val exoPlayer = remember {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36")
@@ -221,21 +221,12 @@ fun PlayerScreen(
         val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
-        // Use DefaultRenderersFactory with decoder fallback enabled so ExoPlayer queries
-        // system codecs using standard platform mechanisms and falls back gracefully if hardware
-        // resource interfaces are unavailable.
-        val renderersFactory = DefaultRenderersFactory(context).apply {
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
-            setEnableDecoderFallback(true)
-            setAllowedVideoJoiningTimeMs(5000)
-        }
-
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        ExoPlayer.Builder(context, renderersFactory)
+        ExoPlayer.Builder(context)
             .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
@@ -251,6 +242,7 @@ fun PlayerScreen(
     var duration by remember { mutableLongStateOf(video.durationMs) }
     var isSeeking by remember { mutableStateOf(false) }
     var seekPosition by remember { mutableFloatStateOf(0f) }
+    val effectivePosition = if (isSeeking) seekPosition.toLong() else currentPosition
     var playerErrorMessage by remember { mutableStateOf<String?>(null) }
 
     // Controls visibility & auto-hide
@@ -290,8 +282,8 @@ fun PlayerScreen(
     var subtitleFileName by remember { mutableStateOf<String?>(null) }
     var showSubtitleInfo by remember { mutableStateOf(false) }
 
-    // Gesture Help Guide Overlay state
-    var showGestureGuide by remember { mutableStateOf(!settings.hasSeenGestureGuide) }
+    // Gesture Help Guide Overlay state (defaults to false so video plays immediately without blocking overlay)
+    var showGestureGuide by remember { mutableStateOf(false) }
 
     // System Audio Manager safely retrieved
     val audioManager = remember {
@@ -336,11 +328,9 @@ fun PlayerScreen(
     var brightnessOverlayDismissJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // Horizontal swipe for Seek overlay state
-    var isHorizontalSeekGesture by remember { mutableStateOf(false) }
     var horizontalSeekDeltaMs by remember { mutableLongStateOf(0L) }
     var horizontalSeekTargetPos by remember { mutableLongStateOf(0L) }
     var horizontalSeekInitialPos by remember { mutableLongStateOf(0L) }
-    var seekOverlayDismissJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // Gesture dominant-axis tracking state
     var activeGestureType by remember { mutableStateOf(DragGestureType.NONE) }
@@ -396,6 +386,7 @@ fun PlayerScreen(
 
     // Initialize Video & Resume position
     LaunchedEffect(video.contentUri) {
+        currentAspectRatio = AspectRatioMode.FIT
         currentPosition = 0L
         duration = video.durationMs
         videoFrameWidth = if (video.width > 0) video.width else 16
@@ -462,14 +453,15 @@ fun PlayerScreen(
 
             override fun onPlayerError(error: PlaybackException) {
                 val cause = error.cause
-                val errorMsg = error.localizedMessage?.lowercase() ?: ""
+                val errorMsg = (error.localizedMessage ?: cause?.localizedMessage ?: "").lowercase()
                 val isDecoderIssue = error.errorCode == PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED ||
                         error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
                         error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
                         error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
                         errorMsg.contains("decoder") ||
                         errorMsg.contains("codec") ||
-                        errorMsg.contains("resource")
+                        errorMsg.contains("resource") ||
+                        errorMsg.contains("component interface")
 
                 if (isDecoderIssue && autoRetryCount < 3) {
                     autoRetryCount++
@@ -589,6 +581,32 @@ fun PlayerScreen(
         }
     }
 
+    // Auto-dismiss Volume Overlay safely (ensures overlay never stays stuck on screen)
+    LaunchedEffect(showVolumeOverlay, volumePercentage, activeGestureType) {
+        if (showVolumeOverlay && activeGestureType != DragGestureType.VERTICAL_VOLUME) {
+            delay(1000L)
+            showVolumeOverlay = false
+        }
+    }
+
+    // Auto-dismiss Brightness Overlay safely (ensures overlay never stays stuck on screen)
+    LaunchedEffect(showBrightnessOverlay, brightnessPercentage, activeGestureType) {
+        if (showBrightnessOverlay && activeGestureType != DragGestureType.VERTICAL_BRIGHTNESS) {
+            delay(1000L)
+            showBrightnessOverlay = false
+        }
+    }
+
+    // Immediately dismiss volume and brightness overlays when controls become visible
+    LaunchedEffect(showControls) {
+        if (showControls) {
+            showVolumeOverlay = false
+            showBrightnessOverlay = false
+            volumeOverlayDismissJob?.cancel()
+            brightnessOverlayDismissJob?.cancel()
+        }
+    }
+
     // Subtitle File Picker
     val srtPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -620,6 +638,7 @@ fun PlayerScreen(
                     player = exoPlayer
                     useController = false
                     resizeMode = currentAspectRatio.mode
+                    setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
@@ -648,6 +667,12 @@ fun PlayerScreen(
                     } else {
                         detectTapGestures(
                             onPress = { offset ->
+                                if (showVolumeOverlay || showBrightnessOverlay) {
+                                    showVolumeOverlay = false
+                                    showBrightnessOverlay = false
+                                    volumeOverlayDismissJob?.cancel()
+                                    brightnessOverlayDismissJob?.cancel()
+                                }
                                 try {
                                     tryAwaitRelease()
                                 } finally {
@@ -716,7 +741,14 @@ fun PlayerScreen(
                                 lastInteractionTime = System.currentTimeMillis()
                             },
                             onTap = {
-                                showControls = !showControls
+                                if (showVolumeOverlay || showBrightnessOverlay) {
+                                    showVolumeOverlay = false
+                                    showBrightnessOverlay = false
+                                    volumeOverlayDismissJob?.cancel()
+                                    brightnessOverlayDismissJob?.cancel()
+                                } else {
+                                    showControls = !showControls
+                                }
                                 lastInteractionTime = System.currentTimeMillis()
                             }
                         )
@@ -731,8 +763,10 @@ fun PlayerScreen(
                                 accumulatedDragY = 0f
                                 activeGestureType = DragGestureType.NONE
                                 horizontalSeekInitialPos = exoPlayer.currentPosition
+                                // Dismiss previous transient overlays immediately on new touch down
+                                showVolumeOverlay = false
+                                showBrightnessOverlay = false
                                 volumeOverlayDismissJob?.cancel()
-                                seekOverlayDismissJob?.cancel()
                                 brightnessOverlayDismissJob?.cancel()
                                 val currentVol = try {
                                     audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
@@ -744,31 +778,6 @@ fun PlayerScreen(
                                 brightnessFractionAccumulator = brightnessPercentage
                             },
                             onDragEnd = {
-                                if (activeGestureType == DragGestureType.HORIZONTAL_SEEK) {
-                                    exoPlayer.seekTo(horizontalSeekTargetPos)
-                                    currentPosition = horizontalSeekTargetPos
-                                    seekOverlayDismissJob?.cancel()
-                                    seekOverlayDismissJob = coroutineScope.launch {
-                                        delay(800L)
-                                        isHorizontalSeekGesture = false
-                                    }
-                                } else if (activeGestureType == DragGestureType.VERTICAL_VOLUME) {
-                                    volumeOverlayDismissJob?.cancel()
-                                    volumeOverlayDismissJob = coroutineScope.launch {
-                                        delay(1000L)
-                                        showVolumeOverlay = false
-                                    }
-                                } else if (activeGestureType == DragGestureType.VERTICAL_BRIGHTNESS) {
-                                    brightnessOverlayDismissJob?.cancel()
-                                    brightnessOverlayDismissJob = coroutineScope.launch {
-                                        delay(1000L)
-                                        showBrightnessOverlay = false
-                                    }
-                                }
-                                activeGestureType = DragGestureType.NONE
-                                lastInteractionTime = System.currentTimeMillis()
-                            },
-                            onDragCancel = {
                                 if (activeGestureType == DragGestureType.VERTICAL_VOLUME) {
                                     volumeOverlayDismissJob?.cancel()
                                     volumeOverlayDismissJob = coroutineScope.launch {
@@ -781,9 +790,19 @@ fun PlayerScreen(
                                         delay(1000L)
                                         showBrightnessOverlay = false
                                     }
+                                } else {
+                                    showVolumeOverlay = false
+                                    showBrightnessOverlay = false
                                 }
-                                isHorizontalSeekGesture = false
                                 activeGestureType = DragGestureType.NONE
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                            onDragCancel = {
+                                showVolumeOverlay = false
+                                showBrightnessOverlay = false
+                                activeGestureType = DragGestureType.NONE
+                                volumeOverlayDismissJob?.cancel()
+                                brightnessOverlayDismissJob?.cancel()
                             },
                             onDrag = { change, dragAmount ->
                                 change.consume()
@@ -795,20 +814,14 @@ fun PlayerScreen(
                                 if (activeGestureType == DragGestureType.NONE) {
                                     val dist = hypot(accumulatedDragX, accumulatedDragY)
                                     if (dist >= movementSlop) {
-                                        // Dominant axis detection: if horizontal > vertical -> seek; if vertical > horizontal -> volume
-                                        if (abs(accumulatedDragX) > abs(accumulatedDragY)) {
-                                            activeGestureType = DragGestureType.HORIZONTAL_SEEK
-                                            isHorizontalSeekGesture = true
+                                        // Vertical gesture: right side -> Volume, left side -> Brightness
+                                        val isRightSide = dragStartOffset.x >= size.width * 0.40f
+                                        if (isRightSide) {
+                                            activeGestureType = DragGestureType.VERTICAL_VOLUME
+                                            showVolumeOverlay = true
                                         } else {
-                                            // Vertical gesture: right side (or anywhere convention) -> Volume, far left -> Brightness
-                                            val isRightSide = dragStartOffset.x >= size.width * 0.40f
-                                            if (isRightSide) {
-                                                activeGestureType = DragGestureType.VERTICAL_VOLUME
-                                                showVolumeOverlay = true
-                                            } else {
-                                                activeGestureType = DragGestureType.VERTICAL_BRIGHTNESS
-                                                showBrightnessOverlay = true
-                                            }
+                                            activeGestureType = DragGestureType.VERTICAL_BRIGHTNESS
+                                            showBrightnessOverlay = true
                                         }
                                     }
                                 }
@@ -826,14 +839,6 @@ fun PlayerScreen(
                                         showVolumeOverlay = true
                                         lastInteractionTime = System.currentTimeMillis()
                                     }
-                                    DragGestureType.HORIZONTAL_SEEK -> {
-                                        val scrubWindowMs = duration.coerceAtLeast(60000L).coerceAtMost(300000L)
-                                        val deltaMs = (accumulatedDragX / size.width * scrubWindowMs).toLong()
-                                        horizontalSeekDeltaMs = deltaMs
-                                        horizontalSeekTargetPos = (horizontalSeekInitialPos + deltaMs).coerceIn(0L, duration)
-                                        isHorizontalSeekGesture = true
-                                        lastInteractionTime = System.currentTimeMillis()
-                                    }
                                     DragGestureType.VERTICAL_BRIGHTNESS -> {
                                         val deltaY = -dragAmount.y
                                         val deltaBrightness = deltaY / (size.height * 0.70f)
@@ -847,7 +852,7 @@ fun PlayerScreen(
                                         showBrightnessOverlay = true
                                         lastInteractionTime = System.currentTimeMillis()
                                     }
-                                    DragGestureType.NONE -> {}
+                                    DragGestureType.HORIZONTAL_SEEK, DragGestureType.NONE -> {}
                                 }
                             }
                         )
@@ -1042,77 +1047,6 @@ fun PlayerScreen(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
-            }
-        }
-
-        // Horizontal Seek Gesture Overlay
-        AnimatedVisibility(
-            visible = isHorizontalSeekGesture,
-            enter = fadeIn() + scaleIn(initialScale = 0.92f),
-            exit = fadeOut() + scaleOut(targetScale = 0.92f),
-            modifier = Modifier
-                .align(Alignment.Center)
-                .testTag("player_horizontal_seek_overlay")
-        ) {
-            Surface(
-                color = Color.Black.copy(alpha = 0.88f),
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, VidooBorder),
-                modifier = Modifier.padding(horizontal = 24.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    val deltaSeconds = horizontalSeekDeltaMs / 1000
-                    val deltaText = if (deltaSeconds >= 0) "+${deltaSeconds}s" else "${deltaSeconds}s"
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (deltaSeconds >= 0) Icons.Default.FastForward else Icons.Default.FastRewind,
-                            contentDescription = null,
-                            tint = VidooOrange,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Text(
-                            text = "${formatTime(horizontalSeekTargetPos)} / ${formatTime(duration)}",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "($deltaText)",
-                        color = VidooOrange,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .width(160.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(Color(0xFF333333))
-                    ) {
-                        val seekPct = if (duration > 0) (horizontalSeekTargetPos.toFloat() / duration).coerceIn(0f, 1f) else 0f
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(seekPct)
-                                .height(4.dp)
-                                .background(VidooOrange)
-                        )
-                    }
-                }
             }
         }
 
@@ -1484,7 +1418,6 @@ fun PlayerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        val effectivePosition = if (isSeeking) seekPosition.toLong() else currentPosition
                         val safeDuration = duration.coerceAtLeast(1L)
 
                         // Top row: current time (left) — thin seek/progress bar (center, filling the space) — total duration (right) — rotate/orientation icon (far right, same row)
@@ -1507,6 +1440,9 @@ fun PlayerScreen(
                             Slider(
                                 value = (effectivePosition.toFloat() / safeDuration).coerceIn(0f, 1f),
                                 onValueChange = { fraction ->
+                                    if (!isSeeking) {
+                                        horizontalSeekInitialPos = exoPlayer.currentPosition
+                                    }
                                     isSeeking = true
                                     seekPosition = fraction * safeDuration
                                     lastInteractionTime = System.currentTimeMillis()

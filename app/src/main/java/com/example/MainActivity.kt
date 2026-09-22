@@ -15,18 +15,34 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,6 +51,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
@@ -47,10 +64,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -65,6 +80,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -73,7 +90,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -96,6 +112,7 @@ import com.example.ui.theme.VidooBorder
 import com.example.ui.theme.VidooDarkCharcoal
 import com.example.ui.theme.VidooOrange
 import com.example.ui.theme.VidooOrangeGlow
+import com.example.ui.theme.VidooSurface
 import com.example.ui.theme.VidooTextPrimary
 import com.example.ui.theme.VidooTextSecondary
 import com.example.ui.theme.VidooTextTertiary
@@ -161,6 +178,121 @@ class MainActivity : ComponentActivity() {
         val hasPermission = VideoPlayerViewModel.hasStoragePermission(this)
         if (hasPermission != viewModel.uiState.value.permissionGranted) {
             viewModel.updatePermissionState(hasPermission)
+        }
+    }
+}
+
+@Composable
+fun FloatingCapsuleBottomBar(
+    tabs: List<NavigationTab>,
+    activeTab: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val strings = LocalAppStrings.current
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .shadow(
+                    elevation = 20.dp,
+                    shape = CircleShape,
+                    spotColor = Color.Black.copy(alpha = 0.7f),
+                    ambientColor = Color.Black.copy(alpha = 0.5f)
+                ),
+            shape = CircleShape,
+            color = Color(0xF21C1C24),
+            border = BorderStroke(1.dp, Color(0xFF323242))
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                tabs.forEachIndexed { index, tab ->
+                    val isSelected = activeTab == index
+                    val localizedTitle = when (tab) {
+                        NavigationTab.VIDEOS -> strings.navVideos
+                        NavigationTab.FOLDERS -> strings.navFolders
+                        NavigationTab.PLAYLISTS -> strings.navPlaylists
+                        NavigationTab.SETTINGS -> strings.navSettings
+                    }
+
+                    val scale by animateFloatAsState(
+                        targetValue = if (isSelected) 1.05f else 1.0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        label = "tab_scale"
+                    )
+
+                    val bgColor by animateColorAsState(
+                        targetValue = if (isSelected) VidooOrange.copy(alpha = 0.22f) else Color.Transparent,
+                        animationSpec = tween(220),
+                        label = "tab_bg"
+                    )
+                    val tintColor by animateColorAsState(
+                        targetValue = if (isSelected) VidooOrange else VidooTextTertiary,
+                        animationSpec = tween(220),
+                        label = "tab_tint"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .scale(scale)
+                            .clip(CircleShape)
+                            .background(bgColor)
+                            .clickable { onTabSelected(index) }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            .testTag("nav_tab_${tab.name.lowercase()}"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = localizedTitle,
+                                tint = tintColor,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            AnimatedVisibility(
+                                visible = isSelected,
+                                enter = expandHorizontally(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                ) + fadeIn(animationSpec = tween(180)),
+                                exit = shrinkHorizontally(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                ) + fadeOut(animationSpec = tween(150))
+                            ) {
+                                Row {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = localizedTitle,
+                                        color = tintColor,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -265,48 +397,12 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                 )
             },
             bottomBar = {
-                NavigationBar(
-                    containerColor = VidooDarkCharcoal,
-                    contentColor = VidooTextSecondary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                ) {
-                    NavigationTab.values().forEachIndexed { index, tab ->
-                        val isSelected = activeTab == index
-                        val localizedTitle = when (tab) {
-                            NavigationTab.VIDEOS -> strings.navVideos
-                            NavigationTab.FOLDERS -> strings.navFolders
-                            NavigationTab.PLAYLISTS -> strings.navPlaylists
-                            NavigationTab.SETTINGS -> strings.navSettings
-                        }
-                        NavigationBarItem(
-                            selected = isSelected,
-                            onClick = { activeTab = index },
-                            icon = {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = localizedTitle
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = localizedTitle,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color.Black,
-                                selectedTextColor = VidooOrange,
-                                indicatorColor = VidooOrange,
-                                unselectedIconColor = VidooTextTertiary,
-                                unselectedTextColor = VidooTextTertiary
-                            ),
-                            modifier = Modifier.testTag("nav_tab_${tab.name.lowercase()}")
-                        )
-                    }
-                }
+                FloatingCapsuleBottomBar(
+                    tabs = NavigationTab.values().toList(),
+                    activeTab = activeTab,
+                    onTabSelected = { activeTab = it },
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                )
             },
             containerColor = VidooBlack,
             modifier = Modifier.fillMaxSize()
@@ -334,7 +430,15 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
                 } else {
                     AnimatedContent(
                         targetState = activeTab,
-                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        transitionSpec = {
+                            if (targetState > initialState) {
+                                (slideInHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { it / 3 } + fadeIn(animationSpec = tween(220)))
+                                    .togetherWith(slideOutHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { -it / 3 } + fadeOut(animationSpec = tween(180)))
+                            } else {
+                                (slideInHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { -it / 3 } + fadeIn(animationSpec = tween(220)))
+                                    .togetherWith(slideOutHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { it / 3 } + fadeOut(animationSpec = tween(180)))
+                            }.using(SizeTransform(clip = false))
+                        },
                         label = "tab_content_transition"
                     ) { tabIndex ->
                         when (tabIndex) {
@@ -378,30 +482,45 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
         val hasPrevious = effectiveQueue.size > 1 || currentVideoIndex > 0
         val hasNext = effectiveQueue.size > 1 || (currentVideoIndex in 0 until (effectiveQueue.size - 1))
 
-        if (playingVideo != null) {
-            PlayerScreen(
-                video = playingVideo!!,
-                viewModel = viewModel,
-                hasPrevious = hasPrevious,
-                hasNext = hasNext,
-                onPlayPrevious = {
-                    if (effectiveQueue.isNotEmpty()) {
-                        val prevIndex = if (currentVideoIndex > 0) currentVideoIndex - 1 else effectiveQueue.size - 1
-                        val prevVideo = effectiveQueue[prevIndex]
-                        viewModel.recordVideoPlayed(prevVideo.id)
-                        playingVideo = prevVideo
-                    }
-                },
-                onPlayNext = {
-                    if (effectiveQueue.isNotEmpty()) {
-                        val nextIndex = if (currentVideoIndex in 0 until (effectiveQueue.size - 1)) currentVideoIndex + 1 else 0
-                        val nextVideo = effectiveQueue[nextIndex]
-                        viewModel.recordVideoPlayed(nextVideo.id)
-                        playingVideo = nextVideo
-                    }
-                },
-                onBack = { playingVideo = null }
-            )
+        AnimatedVisibility(
+            visible = playingVideo != null,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + fadeIn(animationSpec = tween(200)),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = tween(200)
+            ) + fadeOut(animationSpec = tween(150))
+        ) {
+            playingVideo?.let { video ->
+                PlayerScreen(
+                    video = video,
+                    viewModel = viewModel,
+                    hasPrevious = hasPrevious,
+                    hasNext = hasNext,
+                    onPlayPrevious = {
+                        if (effectiveQueue.isNotEmpty()) {
+                            val prevIndex = if (currentVideoIndex > 0) currentVideoIndex - 1 else effectiveQueue.size - 1
+                            val prevVideo = effectiveQueue[prevIndex]
+                            viewModel.recordVideoPlayed(prevVideo.id)
+                            playingVideo = prevVideo
+                        }
+                    },
+                    onPlayNext = {
+                        if (effectiveQueue.isNotEmpty()) {
+                            val nextIndex = if (currentVideoIndex in 0 until (effectiveQueue.size - 1)) currentVideoIndex + 1 else 0
+                            val nextVideo = effectiveQueue[nextIndex]
+                            viewModel.recordVideoPlayed(nextVideo.id)
+                            playingVideo = nextVideo
+                        }
+                    },
+                    onBack = { playingVideo = null }
+                )
+            }
         }
     }
 }

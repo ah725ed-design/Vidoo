@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -122,6 +123,11 @@ fun FoldersScreen(
                 items(uiState.folders, key = { it.name }) { folder ->
                     FolderGridCard(
                         folder = folder,
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = tween(220),
+                            fadeOutSpec = tween(180),
+                            placementSpec = tween(250)
+                        ),
                         onClick = {
                             viewModel.selectFolder(folder.name)
                             onFolderSelected(folder.name)

@@ -12,9 +12,13 @@
 -keep class com.example.data.db.** { *; }
 -keep class com.example.data.model.** { *; }
 
-# Coil image/thumbnail loader
--dontwarn coil.**
-
 # Kotlin Coroutines
 -dontwarn kotlinx.coroutines.**
+
+# Strip verbose debug logs in release build for smaller bytecode footprint
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int d(...);
+}
 

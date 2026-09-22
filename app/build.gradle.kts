@@ -102,7 +102,10 @@ android {
                 "/META-INF/LICENSE*",
                 "/META-INF/NOTICE*",
                 "/META-INF/DEPENDENCIES",
-                "META-INF/*.version"
+                "META-INF/*.version",
+                "META-INF/*.kotlin_module",
+                "META-INF/INDEX.LIST",
+                "DebugProbesKt.bin"
             )
         }
     }
@@ -135,9 +138,11 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.runtime)
 
-    implementation(libs.coil.compose)
-    implementation(libs.coil.video)
+    // Using native Android ContentResolver thumbnail loading with LruCache; Coil dependencies commented out to save ~3MB
+    // implementation(libs.coil.compose)
+    // implementation(libs.coil.video)
 
+    // Modular Media3 components (exoplayer, ui, common) instead of monolithic bundle
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     implementation(libs.media3.common)

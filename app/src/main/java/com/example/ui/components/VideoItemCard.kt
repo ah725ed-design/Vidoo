@@ -143,22 +143,86 @@ fun VideoListItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Video Details
+            // Video Details + Actions Column
             Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center
+                modifier = Modifier
+                    .weight(1f)
+                    .height(72.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = video.displayName,
-                    color = VidooTextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                // Top row: Title and 3-dots Menu Button aligned at top
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = video.displayName,
+                        color = VidooTextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 4.dp)
+                    )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                    // 3-dots Menu Button aligned at top with the video title
+                    Box {
+                        val strings = LocalAppStrings.current
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = strings.videoDetails,
+                                tint = VidooTextSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
 
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.background(VidooSurface)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(strings.playVideo, color = VidooTextPrimary) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = VidooOrange)
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onVideoClick(video)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(strings.addToPlaylist, color = VidooTextPrimary) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = VidooOrange)
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onAddToPlaylistClick(video)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(strings.videoDetails, color = VidooTextPrimary) },
+                                leadingIcon = {
+                                    Icon(Icons.Outlined.Info, contentDescription = null, tint = VidooTextSecondary)
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onDetailsClick(video)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Middle row: Folder name
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -178,17 +242,18 @@ fun VideoListItem(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(3.dp))
-
+                // Bottom row: Video size on left, Video quality badge on right below 3-dots
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = video.formattedSize(),
                         color = VidooTextSecondary,
                         fontSize = 12.sp
                     )
+
                     video.resolutionText()?.let { res ->
                         Surface(
                             color = VidooOrange.copy(alpha = 0.15f),
@@ -199,62 +264,10 @@ fun VideoListItem(
                                 color = VidooOrange,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                             )
                         }
                     }
-                }
-            }
-
-            // More Menu
-            Box {
-                val strings = LocalAppStrings.current
-                IconButton(
-                    onClick = { showMenu = true },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = strings.videoDetails,
-                        tint = VidooTextSecondary
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false },
-                    modifier = Modifier.background(VidooSurface)
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(strings.playVideo, color = VidooTextPrimary) },
-                        leadingIcon = {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = VidooOrange)
-                        },
-                        onClick = {
-                            showMenu = false
-                            onVideoClick(video)
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(strings.addToPlaylist, color = VidooTextPrimary) },
-                        leadingIcon = {
-                            Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = VidooOrange)
-                        },
-                        onClick = {
-                            showMenu = false
-                            onAddToPlaylistClick(video)
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(strings.videoDetails, color = VidooTextPrimary) },
-                        leadingIcon = {
-                            Icon(Icons.Outlined.Info, contentDescription = null, tint = VidooTextSecondary)
-                        },
-                        onClick = {
-                            showMenu = false
-                            onDetailsClick(video)
-                        }
-                    )
                 }
             }
         }

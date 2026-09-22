@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -207,6 +208,11 @@ fun PlaylistsScreen(
                         items(playlists, key = { it.id }) { playlist ->
                             PlaylistItemCard(
                                 playlist = playlist,
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = tween(220),
+                                    fadeOutSpec = tween(180),
+                                    placementSpec = tween(250)
+                                ),
                                 onClick = { viewModel.selectPlaylist(playlist) },
                                 onDelete = { viewModel.deletePlaylist(playlist.id) }
                             )
@@ -406,6 +412,11 @@ fun PlaylistDetailView(
                         colors = CardDefaults.cardColors(containerColor = VidooCardBg),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .animateItem(
+                                fadeInSpec = tween(220),
+                                fadeOutSpec = tween(180),
+                                placementSpec = tween(250)
+                            )
                             .clickable { onPlayItem(item) }
                     ) {
                         Row(

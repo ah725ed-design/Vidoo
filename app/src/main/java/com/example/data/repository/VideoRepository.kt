@@ -31,6 +31,20 @@ class VideoRepository(private val context: Context) {
     private val playlistDao = db.playlistDao()
     private val playbackProgressDao = db.playbackProgressDao()
 
+    companion object {
+        private val VALID_VIDEO_EXTENSIONS = setOf(
+            "mp4", "m4v", "mkv", "webm", "avi", "3gp", "3gpp", "3g2",
+            "mov", "flv", "wmv", "asf", "ogv", "f4v", "vob", "m2ts", "divx", "rmvb"
+        )
+
+        private val NON_VIDEO_EXTENSIONS = setOf(
+            "ts", "tsx", "js", "jsx", "json", "txt", "md", "xml", "html", "css",
+            "kt", "java", "py", "c", "cpp", "h", "cs", "php", "sh", "bat",
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip", "rar", "tar", "gz", "7z",
+            "apk", "aab", "png", "jpg", "jpeg", "webp", "gif", "svg", "mp3", "wav", "flac", "aac", "ogg", "m4a"
+        )
+    }
+
     suspend fun queryLocalVideos(): List<VideoItem> = withContext(Dispatchers.IO) {
         val videoList = mutableListOf<VideoItem>()
         val projection = arrayOf(
@@ -51,13 +65,14 @@ class VideoRepository(private val context: Context) {
         )
 
         val sortOrder = "${MediaStore.Video.Media.DATE_MODIFIED} DESC"
+        val selection = "${MediaStore.Video.Media.SIZE} > 0"
 
         try {
             val queryUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
             context.contentResolver.query(
                 queryUri,
                 projection,
-                null,
+                selection,
                 null,
                 sortOrder
             )?.use { cursor ->
@@ -95,7 +110,51 @@ class VideoRepository(private val context: Context) {
                     }
                     val width = if (widthColumn >= 0) cursor.getInt(widthColumn) else 0
                     val height = if (heightColumn >= 0) cursor.getInt(heightColumn) else 0
-                    val mime = if (mimeColumn >= 0) cursor.getString(mimeColumn) ?: "video/mp4" else "video/mp4"
+                    val mime = if (mimeColumn >= 0) cursor.getString(mimeColumn)?.trim() ?: "" else ""
+
+                    // Strict validation: Skip 0 duration, 0 or corrupt size
+                    if (duration <= 0L || size <= 1024L) {
+                        continue
+                    }
+
+                    val ext = displayName.substringAfterLast('.', "").lowercase()
+
+                    // Handle .ts files specifically: filter out TypeScript / config files
+                    if (ext == "ts") {
+                        val isCodeFile = displayName.contains(".config.", ignoreCase = true) ||
+                                displayName.contains(".spec.", ignoreCase = true) ||
+                                displayName.contains(".test.", ignoreCase = true) ||
+                                displayName.contains(".d.ts", ignoreCase = true) ||
+                                displayName.contains(".module.", ignoreCase = true) ||
+                                displayName.contains(".interface.", ignoreCase = true) ||
+                                displayName.contains(".component.", ignoreCase = true) ||
+                                displayName.contains(".service.", ignoreCase = true) ||
+                                displayName.equals("data.ts", ignoreCase = true) ||
+                                displayName.equals("capacitor.config.ts", ignoreCase = true) ||
+                                displayName.equals("googleSheets.ts", ignoreCase = true)
+                        if (isCodeFile) continue
+
+                        val isTransportStreamMime = mime.equals("video/mp2t", ignoreCase = true) ||
+                                mime.equals("video/mp2ts", ignoreCase = true) ||
+                                mime.equals("video/ts", ignoreCase = true)
+
+                        // If not confirmed video transport stream with substantial size, skip it
+                        if (!isTransportStreamMime || size < 50 * 1024L) {
+                            continue
+                        }
+                    } else {
+                        // For all other files, reject non-video extensions and verify valid video extension or video/ MIME type
+                        if (ext in NON_VIDEO_EXTENSIONS) {
+                            continue
+                        }
+                        val isValidExtension = ext in VALID_VIDEO_EXTENSIONS
+                        val isValidMime = mime.startsWith("video/", ignoreCase = true) &&
+                                !mime.equals("video/x-unknown", ignoreCase = true)
+
+                        if (!isValidExtension && !isValidMime) {
+                            continue
+                        }
+                    }
 
                     val contentUri = ContentUris.withAppendedId(
                         MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
@@ -114,7 +173,7 @@ class VideoRepository(private val context: Context) {
                             folderName = folderName,
                             width = width,
                             height = height,
-                            mimeType = mime
+                            mimeType = if (mime.isNotEmpty()) mime else "video/mp4"
                         )
                     )
                 }

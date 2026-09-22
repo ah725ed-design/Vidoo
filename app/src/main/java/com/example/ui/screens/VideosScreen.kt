@@ -108,6 +108,24 @@ fun VideosScreen(
     var videoForDetails by remember { mutableStateOf<VideoItem?>(null) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
 
+    // Instant local text state for 60fps zero-lag typing response with debounced filtering
+    var localSearchQuery by remember { mutableStateOf(uiState.searchQuery) }
+
+    // Sync if viewModel resets search query (e.g. externally cleared)
+    LaunchedEffect(uiState.searchQuery) {
+        if (localSearchQuery != uiState.searchQuery) {
+            localSearchQuery = uiState.searchQuery
+        }
+    }
+
+    // Debounce search update to avoid re-filtering huge lists on every single keystroke
+    LaunchedEffect(localSearchQuery) {
+        if (localSearchQuery != uiState.searchQuery) {
+            kotlinx.coroutines.delay(120)
+            viewModel.setSearchQuery(localSearchQuery)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -166,7 +184,7 @@ fun VideosScreen(
                             .fillMaxHeight(),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        if (uiState.searchQuery.isEmpty()) {
+                        if (localSearchQuery.isEmpty()) {
                             Text(
                                 text = strings.searchVideosPlaceholder,
                                 color = VidooTextTertiary,
@@ -176,8 +194,8 @@ fun VideosScreen(
                             )
                         }
                         BasicTextField(
-                            value = uiState.searchQuery,
-                            onValueChange = { viewModel.setSearchQuery(it) },
+                            value = localSearchQuery,
+                            onValueChange = { localSearchQuery = it },
                             singleLine = true,
                             textStyle = TextStyle(
                                 color = VidooTextPrimary,
@@ -192,9 +210,12 @@ fun VideosScreen(
                         )
                     }
 
-                    if (uiState.searchQuery.isNotEmpty()) {
+                    if (localSearchQuery.isNotEmpty()) {
                         IconButton(
-                            onClick = { viewModel.setSearchQuery("") },
+                            onClick = {
+                                localSearchQuery = ""
+                                viewModel.setSearchQuery("")
+                            },
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
@@ -333,6 +354,11 @@ fun VideosScreen(
                             items(uiState.filteredVideos, key = { it.id }) { video ->
                                 VideoGridItem(
                                     video = video,
+                                    modifier = Modifier.animateItem(
+                                        fadeInSpec = tween(220),
+                                        fadeOutSpec = tween(180),
+                                        placementSpec = tween(250)
+                                    ),
                                     onVideoClick = {
                                         viewModel.setPlaybackQueue(uiState.filteredVideos)
                                         viewModel.recordVideoPlayed(video.id)
@@ -353,6 +379,11 @@ fun VideosScreen(
                             items(uiState.filteredVideos, key = { it.id }) { video ->
                                 VideoListItem(
                                     video = video,
+                                    modifier = Modifier.animateItem(
+                                        fadeInSpec = tween(220),
+                                        fadeOutSpec = tween(180),
+                                        placementSpec = tween(250)
+                                    ),
                                     onVideoClick = {
                                         viewModel.setPlaybackQueue(uiState.filteredVideos)
                                         viewModel.recordVideoPlayed(video.id)

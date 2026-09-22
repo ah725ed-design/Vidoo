@@ -18,7 +18,7 @@ data class AppSettings(
     val hideShortVideos: Boolean = false,
     val shortVideoThresholdSec: Int = 30, // 30, 60, 120
     val appLanguage: String = "en", // "en" or "ar"
-    val hasSeenGestureGuide: Boolean = false
+    val hasSeenGestureGuide: Boolean = true
 )
 
 class SettingsManager(context: Context) {
@@ -42,7 +42,7 @@ class SettingsManager(context: Context) {
             hideShortVideos = prefs.getBoolean("hide_short_videos", false),
             shortVideoThresholdSec = prefs.getInt("short_video_threshold_sec", 30),
             appLanguage = prefs.getString("app_language", systemLang) ?: systemLang,
-            hasSeenGestureGuide = prefs.getBoolean("has_seen_gesture_guide", false)
+            hasSeenGestureGuide = prefs.getBoolean("has_seen_gesture_guide", true)
         )
     }
 
