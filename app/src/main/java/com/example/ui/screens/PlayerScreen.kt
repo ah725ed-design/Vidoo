@@ -123,6 +123,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -218,15 +219,19 @@ fun PlayerScreen(
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(20000)
 
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+        val dataSourceFactory = DefaultDataSource.Factory(context.applicationContext, httpDataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+
+        val renderersFactory = DefaultRenderersFactory(context.applicationContext)
+            .setEnableDecoderFallback(true)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        ExoPlayer.Builder(context)
+        ExoPlayer.Builder(context.applicationContext, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
@@ -463,13 +468,16 @@ fun PlayerScreen(
                         errorMsg.contains("resource") ||
                         errorMsg.contains("component interface")
 
-                if (isDecoderIssue && autoRetryCount < 3) {
+                if (isDecoderIssue && autoRetryCount < 4) {
                     autoRetryCount++
                     val savedPos = exoPlayer.currentPosition
                     coroutineScope.launch {
-                        delay(350L)
+                        delay(400L)
                         try {
                             exoPlayer.stop()
+                            exoPlayer.clearMediaItems()
+                            val mediaItem = MediaItem.fromUri(Uri.parse(video.contentUri))
+                            exoPlayer.setMediaItem(mediaItem)
                             exoPlayer.prepare()
                             if (savedPos > 0L) {
                                 exoPlayer.seekTo(savedPos)

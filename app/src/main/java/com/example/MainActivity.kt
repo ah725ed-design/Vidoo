@@ -71,6 +71,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -481,6 +482,10 @@ fun VidooApp(viewModel: VideoPlayerViewModel) {
         // Only genuinely disabled when there are no other videos in the library/queue (size <= 1)
         val hasPrevious = effectiveQueue.size > 1 || currentVideoIndex > 0
         val hasNext = effectiveQueue.size > 1 || (currentVideoIndex in 0 until (effectiveQueue.size - 1))
+
+        LaunchedEffect(playingVideo) {
+            com.example.util.VideoThumbnailHelper.isPlaybackActive = (playingVideo != null)
+        }
 
         AnimatedVisibility(
             visible = playingVideo != null,

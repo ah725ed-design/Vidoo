@@ -37,6 +37,7 @@ object VideoThumbnailHelper {
 
             // Serialize thumbnail extraction so concurrent queries never exhaust MediaCodec hardware resources
             thumbnailMutex.withLock {
+                if (isPlaybackActive) return@withLock null
                 // Re-check cache inside lock
                 memoryCache.get(cacheKey)?.let { return@withLock it }
                 if (failedIds.contains(videoId)) return@withLock null
